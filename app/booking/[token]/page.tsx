@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 import { supabaseAdmin } from '@/lib/supabase'
 import { format, parseISO } from 'date-fns'
 import { nl } from 'date-fns/locale'

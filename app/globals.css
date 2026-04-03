@@ -1,0 +1,28 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+/* react-day-picker overrides */
+.rdp {
+  --rdp-cell-size: 42px;
+  --rdp-accent-color: #15803d;
+  --rdp-background-color: #f0fdf4;
+  margin: 0;
+}
+
+.rdp-day_selected,
+.rdp-day_selected:hover {
+  background-color: #15803d;
+  color: white;
+}
+
+.rdp-day_today {
+  font-weight: 700;
+  color: #15803d;
+}
+
+.rdp-button:hover:not([disabled]) {
+  background-color: #f0fdf4;
+}

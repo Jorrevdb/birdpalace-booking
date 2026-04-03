@@ -1,5 +1,5 @@
 import { google } from 'googleapis'
-import { addMinutes, format, parseISO, isWithinInterval, startOfDay, endOfDay } from 'date-fns'
+import { addMinutes, parseISO, startOfDay, endOfDay } from 'date-fns'
 import { TOUR_TIMES, TOUR_DURATION_MINUTES } from './config'
 import { Worker } from '@/types'
 

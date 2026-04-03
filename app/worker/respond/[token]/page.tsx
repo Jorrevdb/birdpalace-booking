@@ -1,17 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { format, parseISO } from 'date-fns'
-import { nl } from 'date-fns/locale'
 
-type State = 'loading' | 'ready' | 'submitting' | 'done' | 'already_handled' | 'error'
+type State = 'ready' | 'submitting' | 'done' | 'already_handled' | 'error'
 
-export default function WorkerRespondPage({
-  params,
-}: {
-  params: { token: string }
-}) {
+// ─── Inner component (uses useSearchParams → must be inside Suspense) ───────
+function WorkerRespondContent({ token }: { token: string }) {
   const searchParams = useSearchParams()
   const defaultAction = searchParams.get('action') as 'accept' | 'decline' | null
 
@@ -26,7 +21,7 @@ export default function WorkerRespondPage({
     setState('submitting')
 
     try {
-      const res = await fetch(`/api/worker/respond/${params.token}`, {
+      const res = await fetch(`/api/worker/respond/${token}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action, message }),
@@ -95,7 +90,6 @@ export default function WorkerRespondPage({
         <h1 className="text-2xl font-bold text-center text-gray-900 mb-6">Boekingsaanvraag</h1>
 
         <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-5">
-          {/* Action toggle */}
           <div>
             <p className="text-sm font-medium text-gray-700 mb-3">Jouw reactie</p>
             <div className="grid grid-cols-2 gap-3">
@@ -124,7 +118,6 @@ export default function WorkerRespondPage({
             </div>
           </div>
 
-          {/* Optional message */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">
               Bericht aan de bezoeker{' '}
@@ -169,7 +162,22 @@ export default function WorkerRespondPage({
   )
 }
 
-// Small helper component
+// ─── Outer page component with Suspense (required for useSearchParams) ───────
+export default function WorkerRespondPage({ params }: { params: { token: string } }) {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+          <div className="w-8 h-8 border-2 border-brand-600 border-t-transparent rounded-full animate-spin" />
+        </div>
+      }
+    >
+      <WorkerRespondContent token={params.token} />
+    </Suspense>
+  )
+}
+
+// ─── Helper component ────────────────────────────────────────────────────────
 function StatusCard({
   icon,
   title,

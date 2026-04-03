@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { getAvailableSlotsForDate } from '@/lib/googleCalendar'
 import { addDays, format, parseISO, isBefore, addHours } from 'date-fns'
-import { MAX_BOOKING_DAYS_AHEAD, MIN_BOOKING_HOURS_AHEAD, TOUR_TIMES } from '@/lib/config'
+import { MAX_BOOKING_DAYS_AHEAD, MIN_BOOKING_HOURS_AHEAD } from '@/lib/config'
 import { Worker } from '@/types'
 
 // GET /api/availability?from=YYYY-MM-DD&to=YYYY-MM-DD

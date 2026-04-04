@@ -6,6 +6,9 @@ import { nl } from 'date-fns/locale'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
+// Temporary sender: use onboarding@resend.dev until birdpalace.be DNS is verified in Resend
+const FROM = `${SITE_NAME} <onboarding@resend.dev>`
+
 function formatDate(dateStr: string) {
   return format(parseISO(dateStr), 'EEEE d MMMM yyyy', { locale: nl })
 }
@@ -14,7 +17,7 @@ function formatDate(dateStr: string) {
 export async function sendBookingReceivedEmail(booking: Booking): Promise<void> {
   try {
     await resend.emails.send({
-      from: `${SITE_NAME} <noreply@birdpalace.be>`,
+      from: FROM,
       to: booking.visitor_email,
       subject: `Aanvraag ontvangen – ${formatDate(booking.tour_date)} om ${booking.tour_time}`,
       html: `
@@ -48,7 +51,7 @@ export async function sendWorkerNotificationEmail(
 
   try {
     await resend.emails.send({
-      from: `${SITE_NAME} <noreply@birdpalace.be>`,
+      from: FROM,
       to: worker.email,
       subject: `Nieuw boekingsverzoek – ${formatDate(booking.tour_date)} om ${booking.tour_time}`,
       html: `
@@ -63,11 +66,10 @@ export async function sendWorkerNotificationEmail(
             <tr><td style="padding:8px 0;color:#666">Naam bezoeker</td><td style="padding:8px 0;font-weight:600">${booking.visitor_name}</td></tr>
             <tr><td style="padding:8px 0;color:#666">Telefoon</td><td style="padding:8px 0;font-weight:600">${booking.visitor_phone}</td></tr>
           </table>
-          <div style="display:flex;gap:12px;margin:24px 0">
+          <div style="margin:24px 0">
             <a href="${acceptUrl}" style="display:inline-block;padding:12px 28px;background:#2d6a4f;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;margin-right:12px">✓ Ik accepteer</a>
             <a href="${declineUrl}" style="display:inline-block;padding:12px 28px;background:#dc2626;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">✗ Ik kan niet</a>
           </div>
-          <p style="color:#888;font-size:13px">Of ga naar <a href="${SITE_URL}/worker/respond/${responseToken}">${SITE_URL}/worker/respond/${responseToken}</a> voor meer opties.</p>
         </div>
       `,
     })
@@ -83,7 +85,7 @@ export async function sendBookingApprovedEmail(
 ): Promise<void> {
   try {
     await resend.emails.send({
-      from: `${SITE_NAME} <noreply@birdpalace.be>`,
+      from: FROM,
       to: booking.visitor_email,
       subject: `Tour bevestigd! – ${formatDate(booking.tour_date)} om ${booking.tour_time}`,
       html: `
@@ -94,12 +96,9 @@ export async function sendBookingApprovedEmail(
             <tr><td style="padding:8px 0;color:#666;width:160px">Datum</td><td style="padding:8px 0;font-weight:600">${formatDate(booking.tour_date)}</td></tr>
             <tr><td style="padding:8px 0;color:#666">Tijdslot</td><td style="padding:8px 0;font-weight:600">${booking.tour_time}</td></tr>
             <tr><td style="padding:8px 0;color:#666">Personen</td><td style="padding:8px 0;font-weight:600">${booking.total_people} (${booking.children_count} kinderen)</td></tr>
-            <tr><td style="padding:8px 0;color:#666">Pinguïns voeren</td><td style="padding:8px 0;font-weight:600">${booking.penguin_feeding_count} persoon${booking.penguin_feeding_count !== 1 ? 'en' : ''}</td></tr>
           </table>
-          ${booking.worker_message ? `<blockquote style="border-left:4px solid #2d6a4f;margin:0;padding:12px 16px;background:#f0fdf4;border-radius:0 8px 8px 0;color:#166534">"${booking.worker_message}"</blockquote>` : ''}
-          <p style="margin-top:24px">We kijken ernaar uit jullie te verwelkomen bij ${SITE_NAME}!</p>
-          <a href="${SITE_URL}/booking/${booking.edit_token}" style="display:inline-block;padding:12px 24px;background:#2d6a4f;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Bekijk boeking</a>
-          <p style="margin-top:32px;color:#888;font-size:13px">Vragen? Mail ons op <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
+          ${booking.worker_message ? `<blockquote style="border-left:4px solid #2d6a4f;margin:0;padding:12px 16px;background:#f0fdf4;border-radius:0 8px 8px 0">${booking.worker_message}</blockquote>` : ''}
+          <a href="${SITE_URL}/booking/${booking.edit_token}" style="display:inline-block;margin-top:24px;padding:12px 24px;background:#2d6a4f;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Bekijk boeking</a>
         </div>
       `,
     })
@@ -115,17 +114,15 @@ export async function sendBookingDeniedEmail(
 ): Promise<void> {
   try {
     await resend.emails.send({
-      from: `${SITE_NAME} <noreply@birdpalace.be>`,
+      from: FROM,
       to: booking.visitor_email,
       subject: `Helaas – ${formatDate(booking.tour_date)} om ${booking.tour_time} niet beschikbaar`,
       html: `
         <div style="font-family:sans-serif;max-width:560px;margin:0 auto;color:#1a1a1a">
           <h2 style="color:#dc2626">Helaas...</h2>
           <p>We kunnen de tour op ${formatDate(booking.tour_date)} om ${booking.tour_time} niet bevestigen.</p>
-          ${workerMessage ? `<blockquote style="border-left:4px solid #dc2626;margin:0;padding:12px 16px;background:#fef2f2;border-radius:0 8px 8px 0;color:#991b1b">"${workerMessage}"</blockquote>` : ''}
-          <p style="margin-top:24px">Je kunt een nieuwe aanvraag doen op een andere datum.</p>
-          <a href="${SITE_URL}" style="display:inline-block;padding:12px 24px;background:#2d6a4f;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Kies een andere datum</a>
-          <p style="margin-top:32px;color:#888;font-size:13px">Vragen? Mail ons op <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
+          ${workerMessage ? `<blockquote style="border-left:4px solid #dc2626;margin:0;padding:12px 16px;background:#fef2f2">${workerMessage}</blockquote>` : ''}
+          <a href="${SITE_URL}" style="display:inline-block;margin-top:24px;padding:12px 24px;background:#2d6a4f;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Kies een andere datum</a>
         </div>
       `,
     })
@@ -141,7 +138,7 @@ export async function sendSlotTakenEmail(
 ): Promise<void> {
   try {
     await resend.emails.send({
-      from: `${SITE_NAME} <noreply@birdpalace.be>`,
+      from: FROM,
       to: worker.email,
       subject: `Boeking al ingenomen – ${formatDate(booking.tour_date)} om ${booking.tour_time}`,
       html: `

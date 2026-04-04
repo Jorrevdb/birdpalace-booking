@@ -7,6 +7,7 @@ import { nl } from 'date-fns/locale'
 const resend = new Resend(process.env.RESEND_API_KEY)
 
 // Temporary sender: use onboarding@resend.dev until birdpalace.be DNS is verified in Resend
+
 const FROM = `${SITE_NAME} <onboarding@birdpalace.be>`
 
 function formatDate(dateStr: string) {

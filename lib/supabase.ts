@@ -1,11 +1,3 @@
-import { createClient } from '@supabase/supabase-js'
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
-
-// Client-side Supabase (safe to expose)
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
-
-// Server-side Supabase with elevated permissions (API routes only)
-export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey)
+// STUB – will be filled in after Vercel build is confirmed working
+export const supabase = null as any
+export const supabaseAdmin = null as any

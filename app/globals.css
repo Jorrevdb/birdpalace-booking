@@ -1,0 +1,40 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* react-day-picker overrides */
+.rdp {
+  --rdp-cell-size: 44px;
+  --rdp-accent-color: #16a34a;
+  --rdp-background-color: #f0fdf4;
+  margin: 0;
+  width: 100%;
+}
+
+.rdp-months {
+  width: 100%;
+}
+
+.rdp-month {
+  width: 100%;
+}
+
+.rdp-table {
+  width: 100%;
+  max-width: 100%;
+}
+
+.rdp-day_available:not(.rdp-day_selected):not(.rdp-day_disabled) {
+  font-weight: 600;
+  color: #15803d;
+}
+
+.rdp-day_available:not(.rdp-day_selected):not(.rdp-day_disabled)::after {
+  content: '';
+  display: block;
+  width: 4px;
+  height: 4px;
+  background: #22c55e;
+  border-radius: 50%;
+  margin: 2px auto 0;
+}

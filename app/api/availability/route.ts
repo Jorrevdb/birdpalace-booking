@@ -1,84 +1,49 @@
 export const dynamic = 'force-dynamic'
 
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase'
-import { getAvailableSlotsForDate } from '@/lib/googleCalendar'
-import { addDays, format, parseISO, isBefore, addHours } from 'date-fns'
-import { MAX_BOOKING_DAYS_AHEAD, MIN_BOOKING_HOURS_AHEAD } from '@/lib/config'
-import { Worker } from '@/types'
 
-// GET /api/availability?from=YYYY-MM-DD&to=YYYY-MM-DD
+// MOCK – generates realistic availability for the next 60 days
+// Replace this with real Supabase + Google Calendar logic once API keys are set
 export async function GET(req: NextRequest) {
-  try {
-    const { searchParams } = new URL(req.url)
-    const from = searchParams.get('from')
-    const to = searchParams.get('to')
+  const { searchParams } = new URL(req.url)
+  const from = searchParams.get('from')
+  const to = searchParams.get('to')
 
-    if (!from || !to) {
-      return NextResponse.json({ error: 'from and to params required' }, { status: 400 })
-    }
+  if (!from || !to) {
+    return NextResponse.json({ error: 'from and to params required' }, { status: 400 })
+  }
 
-    const { data: workers, error } = await supabaseAdmin
-      .from('workers')
-      .select('*')
+  const availability: Record<string, string[]> = {}
+  const allSlots = ['11:00', '13:00', '15:00']
 
-    if (error) throw error
-    if (!workers?.length) {
-      return NextResponse.json({ availability: {} })
-    }
+  // Generate mock availability: weekdays get 2-3 slots, weekends get all 3
+  const current = new Date(from)
+  const end = new Date(to)
 
-    const minBookingTime = addHours(new Date(), MIN_BOOKING_HOURS_AHEAD)
-    const maxDate = addDays(new Date(), MAX_BOOKING_DAYS_AHEAD)
+  while (current <= end) {
+    const dayOfWeek = current.getDay() // 0=Sun, 6=Sat
+    const dateStr = current.toISOString().slice(0, 10)
 
-    let current = parseISO(from)
-    const end = parseISO(to)
-    const dates: string[] = []
-
-    while (!isBefore(end, current)) {
-      const dateStr = format(current, 'yyyy-MM-dd')
-      dates.push(dateStr)
-      current = addDays(current, 1)
-    }
-
-    const results = await Promise.all(
-      dates.map(async (date) => {
-        const dateObj = parseISO(date)
-        if (isBefore(maxDate, dateObj)) return { date, slots: [] }
-
-        const availableSlots = await getAvailableSlotsForDate(workers as Worker[], date)
-
-        const filteredSlots = availableSlots.filter((time) => {
-          const [h, m] = time.split(':').map(Number)
-          const slotDateTime = new Date(dateObj)
-          slotDateTime.setHours(h, m, 0, 0)
-          return !isBefore(slotDateTime, minBookingTime)
-        })
-
-        const { data: existingBookings } = await supabaseAdmin
-          .from('bookings')
-          .select('tour_time')
-          .eq('tour_date', date)
-          .in('status', ['pending', 'approved'])
-
-        const bookedTimes = new Set(existingBookings?.map((b) => b.tour_time) ?? [])
-
-        return {
-          date,
-          slots: filteredSlots.filter((t) => !bookedTimes.has(t)),
+    // Skip Mondays (day off in mock)
+    if (dayOfWeek !== 1) {
+      if (dayOfWeek === 0 || dayOfWeek === 6) {
+        // Weekend: all slots available
+        availability[dateStr] = [...allSlots]
+      } else {
+        // Weekday: randomly 1-2 slots (deterministic based on date)
+        const dayNum = current.getDate()
+        if (dayNum % 3 === 0) {
+          availability[dateStr] = ['11:00', '15:00']
+        } else if (dayNum % 3 === 1) {
+          availability[dateStr] = ['13:00']
+        } else {
+          availability[dateStr] = ['11:00', '13:00', '15:00']
         }
-      })
-    )
-
-    const availability: Record<string, string[]> = {}
-    for (const { date, slots } of results) {
-      if (slots.length > 0) {
-        availability[date] = slots
       }
     }
 
-    return NextResponse.json({ availability })
-  } catch (err) {
-    console.error('[availability]', err)
-    return NextResponse.json({ error: 'Server error' }, { status: 500 })
+    current.setDate(current.getDate() + 1)
   }
+
+  return NextResponse.json({ availability })
 }

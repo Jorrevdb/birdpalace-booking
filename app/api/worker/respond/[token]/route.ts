@@ -7,6 +7,7 @@ import {
   sendBookingDeniedEmail,
   sendSlotTakenEmail,
 } from '@/lib/email'
+import { createBookingEvent } from '@/lib/googleCalendar'
 
 export async function POST(
   req: NextRequest,
@@ -69,6 +70,9 @@ export async function POST(
 
       // Send approval email to visitor
       await sendBookingApprovedEmail({ ...booking, worker_message: message ?? null }, worker.name)
+
+      // Create event in the connected Google Calendar (fails silently)
+      await createBookingEvent({ ...booking, worker_message: message ?? null })
 
       // Notify other workers that the slot is taken
       const { data: otherResponses } = await supabaseAdmin

@@ -113,8 +113,8 @@ export default function AdminPage() {
 
           {tab === 'calendar' && (
             <div style={{ marginTop: 12 }}>
-              <h2>Calendar</h2>
-              <p>Not implemented yet.</p>
+              <h2>Google Calendar</h2>
+              <CalendarPanel password={password} />
             </div>
           )}
         </div>
@@ -477,6 +477,138 @@ function SettingsPanel({ password }: { password: string }) {
           {message && <p style={{ marginTop: 8 }}>{message}</p>}
         </>
       )}
+    </div>
+  )
+}
+
+// ── Google Calendar Panel ──────────────────────────────────────────────────────
+
+function CalendarPanel({ password }: { password: string }) {
+  const [status, setStatus] = useState<{ connected: boolean; calendar_name?: string; calendar_id?: string } | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [message, setMessage] = useState('')
+
+  async function fetchStatus() {
+    setLoading(true)
+    setMessage('')
+    try {
+      const res = await fetch(`/api/admin/google/status?password=${encodeURIComponent(password)}`)
+      if (!res.ok) throw new Error('Unauthorized')
+      setStatus(await res.json())
+    } catch (err: any) {
+      setMessage(err.message || 'Kon status niet ophalen')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { fetchStatus() }, [])
+
+  // Listen for the OAuth popup success message
+  useEffect(() => {
+    function onMessage(e: MessageEvent) {
+      if (e.origin !== window.location.origin) return
+      if (e.data?.type === 'google:calendar_connected') {
+        fetchStatus()
+      }
+    }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+  }, [password])
+
+  function openConnectPopup() {
+    const width = 680
+    const height = 720
+    const left = window.screenX + (window.outerWidth - width) / 2
+    const top = window.screenY + (window.outerHeight - height) / 2
+    const popup = window.open(
+      '/api/auth/google/start',
+      'google_oauth',
+      `width=${width},height=${height},left=${left},top=${top}`
+    )
+    if (!popup) {
+      setMessage('Popup geblokkeerd door de browser. Sta pop-ups toe voor deze pagina.')
+      return
+    }
+    // Also poll in case postMessage doesn't arrive (popup blocker quirk)
+    const poll = setInterval(() => {
+      if (popup.closed) {
+        clearInterval(poll)
+        fetchStatus()
+      }
+    }, 800)
+  }
+
+  async function disconnect() {
+    if (!confirm('Weet je zeker dat je de Google Calendar wil loskoppelen?')) return
+    setMessage('')
+    try {
+      const res = await fetch('/api/admin/google/disconnect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      })
+      if (!res.ok) throw new Error('Disconnect mislukt')
+      fetchStatus()
+    } catch (err: any) {
+      setMessage(err.message || 'Fout bij loskoppelen')
+    }
+  }
+
+  if (loading) return <p>Laden…</p>
+
+  return (
+    <div style={{ maxWidth: 640 }}>
+      {status?.connected ? (
+        <div style={{ padding: 16, background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8 }}>
+          <p style={{ margin: 0, fontWeight: 600, color: '#15803d' }}>✓ Google Calendar verbonden</p>
+          <p style={{ margin: '8px 0 0', color: '#374151' }}>
+            <strong>Agenda:</strong> {status.calendar_name ?? status.calendar_id}
+          </p>
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: '#6b7280' }}>
+            ID: {status.calendar_id}
+          </p>
+          <div style={{ marginTop: 16, display: 'flex', gap: 8 }}>
+            <button
+              onClick={openConnectPopup}
+              style={{ padding: '8px 14px', background: '#2d6a4f', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}
+            >
+              Andere agenda koppelen
+            </button>
+            <button
+              onClick={disconnect}
+              style={{ padding: '8px 14px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}
+            >
+              Loskoppelen
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ padding: 16, background: '#fef9c3', border: '1px solid #fde047', borderRadius: 8 }}>
+          <p style={{ margin: 0, fontWeight: 600, color: '#854d0e' }}>Geen Google Calendar gekoppeld</p>
+          <p style={{ margin: '8px 0 0', color: '#374151', fontSize: 14 }}>
+            Koppel een Google Calendar zodat het boekingssysteem beschikbaarheid kan lezen en bevestigde tours kan inplannen.
+          </p>
+          <button
+            onClick={openConnectPopup}
+            style={{ marginTop: 14, padding: '10px 20px', background: '#2d6a4f', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 600 }}
+          >
+            Google Calendar koppelen
+          </button>
+        </div>
+      )}
+
+      {message && <p style={{ marginTop: 12, color: '#dc2626' }}>{message}</p>}
+
+      <div style={{ marginTop: 24, padding: 16, background: '#f9fafb', borderRadius: 8, fontSize: 13, color: '#6b7280' }}>
+        <strong style={{ color: '#374151' }}>Hoe werkt het?</strong>
+        <ul style={{ marginTop: 8, paddingLeft: 20, lineHeight: 1.7 }}>
+          <li>Koppel de agenda die medewerkers gebruiken voor planning.</li>
+          <li>Blokkeer een tijdslot door een event aan te maken in die agenda (bv. &quot;Bezet&quot;).</li>
+          <li>Wanneer een tour bevestigd wordt, maakt het systeem automatisch een event aan.</li>
+          <li>Je kan de agenda op elk moment wisselen via &apos;Andere agenda koppelen&apos;.</li>
+        </ul>
+      </div>
     </div>
   )
 }

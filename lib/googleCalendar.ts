@@ -1,38 +1,88 @@
-// Google Calendar integration (service account – see SETUP.md)
-import { google } from 'googleapis'
-import { Worker } from '@/types'
-import { getSettings, parseTourTimes, getTourDuration } from './settings'
+/**
+ * Google Calendar integration — single OAuth-connected calendar.
+ *
+ * The admin connects ONE Google Calendar from the admin panel.
+ * Tokens are stored in the Supabase `settings` table under key 'google_calendar_connection'.
+ *
+ * Availability logic:
+ *   - If no calendar is connected: fall back to showing all slots (current behaviour).
+ *   - If connected: a slot is available when no event in the calendar overlaps it.
+ *
+ * Booking confirmation:
+ *   - When a booking is accepted, create a calendar event so the slot shows as busy.
+ */
 
-function parseServiceAccount() {
-  const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON
-  if (!raw) return null
+import { google } from 'googleapis'
+import { supabaseAdmin } from './supabase'
+import { createOAuth2Client } from './googleOAuth'
+import { getSettings, parseTourTimes, getTourDuration } from './settings'
+import type { Booking } from '@/types'
+
+// ── Types ──────────────────────────────────────────────────────────────────────
+
+export type GoogleCalendarConnection = {
+  calendar_id: string
+  calendar_name?: string
+  access_token: string
+  refresh_token: string
+  expires_at?: string // ISO string
+}
+
+// ── Internal helpers ───────────────────────────────────────────────────────────
+
+/** Read the stored OAuth connection from the settings table. */
+export async function getCalendarConnection(): Promise<GoogleCalendarConnection | null> {
   try {
-    const sa = JSON.parse(raw)
-    if (sa.private_key) sa.private_key = sa.private_key.replace(/\\n/g, '\n')
-    return sa
-  } catch (err) {
-    console.error('[googleCalendar] Failed to parse GOOGLE_SERVICE_ACCOUNT_JSON', err)
+    const { data, error } = await supabaseAdmin
+      .from('settings')
+      .select('value')
+      .eq('key', 'google_calendar_connection')
+      .single()
+
+    if (error || !data?.value) return null
+    const conn = data.value as GoogleCalendarConnection
+    if (!conn.access_token || !conn.refresh_token || !conn.calendar_id) return null
+    return conn
+  } catch {
     return null
   }
 }
 
-async function getCalendarClient() {
-  const sa = parseServiceAccount()
-  if (!sa) return null
+/** Save updated connection (e.g. after token refresh). */
+async function saveCalendarConnection(conn: GoogleCalendarConnection) {
+  await supabaseAdmin
+    .from('settings')
+    .upsert({ key: 'google_calendar_connection', value: conn }, { onConflict: 'key' })
+}
 
-  const jwt = new google.auth.JWT({
-    email: sa.client_email,
-    key: sa.private_key,
-    scopes: ['https://www.googleapis.com/auth/calendar.events.readonly'],
+/** Build an authenticated Google Calendar client from stored tokens. Returns null if not connected. */
+async function getCalendarClient() {
+  const conn = await getCalendarConnection()
+  if (!conn) return null
+
+  const oauth2 = createOAuth2Client()
+  oauth2.setCredentials({
+    access_token: conn.access_token,
+    refresh_token: conn.refresh_token,
+    expiry_date: conn.expires_at ? new Date(conn.expires_at).getTime() : undefined,
   })
 
-  await jwt.authorize()
-  return google.calendar({ version: 'v3', auth: jwt })
+  // Persist refreshed tokens automatically
+  oauth2.on('tokens', async (tokens) => {
+    const updated: GoogleCalendarConnection = {
+      ...conn,
+      access_token: tokens.access_token ?? conn.access_token,
+      expires_at: tokens.expiry_date
+        ? new Date(tokens.expiry_date).toISOString()
+        : conn.expires_at,
+    }
+    await saveCalendarConnection(updated)
+  })
+
+  return { cal: google.calendar({ version: 'v3', auth: oauth2 }), conn }
 }
 
-function toISO(date: Date) {
-  return date.toISOString()
-}
+// ── Date / time helpers ────────────────────────────────────────────────────────
 
 function makeSlotRange(date: string, time: string, durationMinutes: number) {
   const [hour, minute] = time.split(':').map(Number)
@@ -42,99 +92,103 @@ function makeSlotRange(date: string, time: string, durationMinutes: number) {
   return { start, end }
 }
 
-export async function getAvailableSlotsForDate(
-  workers: Worker[],
-  date: string
-): Promise<string[]> {
-  const calendar = await getCalendarClient()
-  if (!calendar) return []
-
-  // Query busy ranges for the whole day once
-  // (Avoid `new Date(...parts)` — it requires a tuple type and fails stricter TS builds on Vercel.)
-  const [y, m, d] = date.split('-').map(Number)
-  const timeMin = new Date(y, m - 1, d, 0, 0, 0)
-  const timeMax = new Date(y, m - 1, d, 23, 59, 59)
-
-  try {
-    const res = await calendar.freebusy.query({
-      requestBody: {
-        timeMin: toISO(timeMin),
-        timeMax: toISO(timeMax),
-        items: workers.map((w) => ({ id: w.google_calendar_id })),
-      },
-    })
-
-    const calendarsBusy = res.data.calendars ?? {}
-
-    const settings = await getSettings()
-    const times = parseTourTimes(settings.tour_times)
-    const duration = getTourDuration(settings.tour_duration_minutes)
-
-    const available: string[] = []
-
-    for (const t of times) {
-      const { start, end } = makeSlotRange(date, t, duration)
-      // Check if at least one worker is free for this slot
-      let slotHasFree = false
-      for (const w of workers) {
-        const busy = calendarsBusy[w.google_calendar_id]?.busy ?? []
-        const isBusy = busy.some((b: any) => {
-          const bs = new Date(b.start)
-          const be = new Date(b.end)
-          return bs < end && be > start
-        })
-        if (!isBusy) {
-          slotHasFree = true
-          break
-        }
-      }
-      if (slotHasFree) available.push(t)
-    }
-
-    return available
-  } catch (err) {
-    console.error('[googleCalendar] freebusy.query failed', err)
-    return []
-  }
+function overlaps(
+  eventStart: string | null | undefined,
+  eventEnd: string | null | undefined,
+  slotStart: Date,
+  slotEnd: Date
+): boolean {
+  if (!eventStart || !eventEnd) return false
+  const es = new Date(eventStart)
+  const ee = new Date(eventEnd)
+  return es < slotEnd && ee > slotStart
 }
 
-export async function getWorkersForSlot(
-  workers: Worker[],
-  date: string,
-  time: string
-): Promise<Worker[]> {
-  const calendar = await getCalendarClient()
-  if (!calendar) return []
+// ── Public API ─────────────────────────────────────────────────────────────────
+
+/**
+ * Returns available time slots for a given date.
+ * Falls back to all configured slots when no calendar is connected.
+ */
+export async function getAvailableSlotsForDate(date: string): Promise<string[]> {
+  const ctx = await getCalendarClient()
 
   const settings = await getSettings()
+  const allSlots = parseTourTimes(settings.tour_times)
   const duration = getTourDuration(settings.tour_duration_minutes)
-  const { start, end } = makeSlotRange(date, time, duration)
 
+  if (!ctx) {
+    // No calendar connected → show all slots (same as before)
+    return [...allSlots]
+  }
+
+  const { cal, conn } = ctx
+  const [y, m, d] = date.split('-').map(Number)
+  const dayStart = new Date(y, m - 1, d, 0, 0, 0)
+  const dayEnd = new Date(y, m - 1, d, 23, 59, 59)
+
+  let events: any[] = []
   try {
-    const res = await calendar.freebusy.query({
+    const res = await cal.events.list({
+      calendarId: conn.calendar_id,
+      timeMin: dayStart.toISOString(),
+      timeMax: dayEnd.toISOString(),
+      singleEvents: true,
+      orderBy: 'startTime',
+    })
+    events = res.data.items ?? []
+  } catch (err) {
+    console.error('[googleCalendar] events.list failed', err)
+    // On error, fall back to all slots rather than hiding everything
+    return [...allSlots]
+  }
+
+  const available: string[] = []
+  for (const slot of allSlots) {
+    const { start, end } = makeSlotRange(date, slot, duration)
+    const blocked = events.some((ev) =>
+      overlaps(
+        ev.start?.dateTime ?? ev.start?.date,
+        ev.end?.dateTime ?? ev.end?.date,
+        start,
+        end
+      )
+    )
+    if (!blocked) available.push(slot)
+  }
+
+  return available
+}
+
+/**
+ * Create a calendar event when a booking is confirmed.
+ * Fails silently — a calendar error must never break the booking flow.
+ */
+export async function createBookingEvent(booking: Booking): Promise<void> {
+  try {
+    const ctx = await getCalendarClient()
+    if (!ctx) return
+
+    const { cal, conn } = ctx
+    const settings = await getSettings()
+    const duration = getTourDuration(settings.tour_duration_minutes)
+    const { start, end } = makeSlotRange(booking.tour_date, booking.tour_time, duration)
+
+    await cal.events.insert({
+      calendarId: conn.calendar_id,
       requestBody: {
-        timeMin: toISO(start),
-        timeMax: toISO(end),
-        items: workers.map((w) => ({ id: w.google_calendar_id })),
+        summary: `Tour: ${booking.visitor_name} (${booking.total_people} pers.)`,
+        description: [
+          `Bezoeker: ${booking.visitor_name}`,
+          `Email: ${booking.visitor_email}`,
+          `Tel: ${booking.visitor_phone}`,
+          `Pinguïns voeren: ${booking.penguin_feeding_count}`,
+        ].join('\n'),
+        start: { dateTime: start.toISOString() },
+        end: { dateTime: end.toISOString() },
       },
     })
-
-    const calendarsBusy = res.data.calendars ?? {}
-
-    const availableWorkers: Worker[] = []
-    for (const w of workers) {
-      const busy = calendarsBusy[w.google_calendar_id]?.busy ?? []
-      const isBusy = busy.some((b: any) => {
-        const bs = new Date(b.start)
-        const be = new Date(b.end)
-        return bs < end && be > start
-      })
-      if (!isBusy) availableWorkers.push(w)
-    }
-
-    return availableWorkers
   } catch (err) {
-    console.error('[googleCalendar] freebusy.query failed', err)
-    return []
+    console.error('[googleCalendar] createBookingEvent failed', err)
   }
 }

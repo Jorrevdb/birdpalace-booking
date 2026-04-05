@@ -50,8 +50,7 @@ export async function getAvailableSlotsForDate(
   if (!calendar) return []
 
   // Query busy ranges for the whole day once
-  const dayStart = new Date(...date.split('-').map((v, i) => (i === 1 ? Number(v) - 1 : Number(v))))
-  // fallback: construct from parts
+  // (Avoid `new Date(...parts)` — it requires a tuple type and fails stricter TS builds on Vercel.)
   const [y, m, d] = date.split('-').map(Number)
   const timeMin = new Date(y, m - 1, d, 0, 0, 0)
   const timeMax = new Date(y, m - 1, d, 23, 59, 59)

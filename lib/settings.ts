@@ -9,7 +9,17 @@ export type Settings = {
   tour_times?: string | string[]
   primary_color?: string
   booking_form_fields?: any
+  weekly_schedule?: any
+  calendar_override_open_keyword?: string
+  calendar_override_closed_keyword?: string
 }
+
+export type WeeklyDayConfig = {
+  enabled: boolean
+  times: string[]
+}
+
+export type WeeklySchedule = Record<number, WeeklyDayConfig>
 
 export async function getSettings(): Promise<Settings> {
   // Critical: prevent Next.js Server Component fetch caching from serving stale settings on reload.
@@ -59,6 +69,46 @@ export function parseTourTimes(raw?: string | string[]) {
   if (!raw) return DEFAULT_TOUR_TIMES
   if (Array.isArray(raw)) return raw
   return String(raw).split(',').map((s) => s.trim()).filter(Boolean)
+}
+
+export function getDefaultWeeklySchedule(baseSlots?: string[]): WeeklySchedule {
+  const slots = baseSlots && baseSlots.length > 0 ? baseSlots : DEFAULT_TOUR_TIMES
+  // Keep existing behavior as default: Monday closed.
+  return {
+    0: { enabled: true, times: [...slots] },
+    1: { enabled: false, times: [...slots] },
+    2: { enabled: true, times: [...slots] },
+    3: { enabled: true, times: [...slots] },
+    4: { enabled: true, times: [...slots] },
+    5: { enabled: true, times: [...slots] },
+    6: { enabled: true, times: [...slots] },
+  }
+}
+
+export function parseWeeklySchedule(raw: any, baseSlots?: string[]): WeeklySchedule {
+  const defaults = getDefaultWeeklySchedule(baseSlots)
+  if (!raw || typeof raw !== 'object') return defaults
+
+  const out: WeeklySchedule = { ...defaults }
+  for (let day = 0; day <= 6; day++) {
+    const candidate = raw[String(day)] ?? raw[day]
+    if (!candidate || typeof candidate !== 'object') continue
+
+    const enabled =
+      typeof candidate.enabled === 'boolean' ? candidate.enabled : defaults[day].enabled
+    const times = Array.from(parseTourTimes(candidate.times ?? defaults[day].times))
+    out[day] = { enabled, times }
+  }
+
+  return out
+}
+
+export function getCalendarOpenKeyword(raw?: string) {
+  return (raw || 'open').trim().toLowerCase()
+}
+
+export function getCalendarClosedKeyword(raw?: string) {
+  return (raw || 'gesloten').trim().toLowerCase()
 }
 
 export function getTourDuration(raw?: number) {

@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import { getSettings, parseTourTimes } from '@/lib/settings'
+import { getSettings, parseTourTimes, parseWeeklySchedule } from '@/lib/settings'
 import { getAvailableSlotsForDate } from '@/lib/googleCalendar'
 
 /**
@@ -11,10 +11,10 @@ import { getAvailableSlotsForDate } from '@/lib/googleCalendar'
  * Returns available time slots per date.
  *
  * Slot availability:
- *  - Monday is always closed.
  *  - At least one active worker must exist.
- *  - If a Google Calendar is connected: slots blocked by calendar events are hidden.
- *  - If no calendar is connected: all configured slots are shown (fallback).
+ *  - Default slots come from weekly schedule settings (enable/disable per weekday + times).
+ *  - Google Calendar events with override words can force a day open/closed.
+ *  - Remaining Google Calendar events block overlapping slots.
  */
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
@@ -37,6 +37,7 @@ export async function GET(req: NextRequest) {
 
   const settings = await getSettings()
   const allSlots = parseTourTimes(settings.tour_times)
+  const weeklySchedule = parseWeeklySchedule(settings.weekly_schedule, Array.from(allSlots))
   const availability: Record<string, string[]> = {}
 
   const current = new Date(from)
@@ -46,12 +47,14 @@ export async function GET(req: NextRequest) {
     const dayOfWeek = current.getDay() // 0=Sun, 1=Mon, 6=Sat
     const dateStr = current.toISOString().slice(0, 10)
 
-    if (dayOfWeek !== 1) {
-      // Query Google Calendar for this date (falls back to all slots if not connected)
-      const slots = await getAvailableSlotsForDate(dateStr)
-      if (slots.length > 0) {
-        availability[dateStr] = slots
-      }
+    const dayCfg = weeklySchedule[dayOfWeek] ?? { enabled: true, times: Array.from(allSlots) }
+    const defaultSlots = dayCfg.enabled ? dayCfg.times : []
+
+    // Query Google Calendar for this date and merge with per-day defaults.
+    // This allows closed-by-default days to become open via override keyword.
+    const slots = await getAvailableSlotsForDate(dateStr, defaultSlots)
+    if (slots.length > 0) {
+      availability[dateStr] = slots
     }
 
     current.setDate(current.getDate() + 1)

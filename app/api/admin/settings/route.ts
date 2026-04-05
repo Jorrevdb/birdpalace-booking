@@ -11,19 +11,33 @@ export async function GET(req: Request) {
   const url = new URL(req.url)
   const password = url.searchParams.get('password')
   if (password !== getAdminPassword()) return new NextResponse('Unauthorized', { status: 401 })
-  // try to read settings row. Support both key/value (value jsonb) and flat column schemas.
-  const { data, error } = await supabaseAdmin.from('settings').select('*').limit(1).single()
-  if (error) {
-    console.error('fetch settings error', error.message || error)
+  // Prefer keyed site settings row (avoid picking other keys like google_calendar_connection).
+  const { data: keyed, error: keyedError } = await supabaseAdmin
+    .from('settings')
+    .select('*')
+    .eq('key', 'site')
+    .order('updated_at', { ascending: false })
+    .limit(1)
+
+  if (!keyedError && keyed && keyed.length > 0) {
+    const row: any = keyed[0]
+    if (row && typeof row === 'object' && 'value' in row && row.value) {
+      return NextResponse.json({ settings: row.value })
+    }
+    return NextResponse.json({ settings: row })
+  }
+
+  // fallback for older flat schema
+  const { data, error } = await supabaseAdmin.from('settings').select('*').order('updated_at', { ascending: false }).limit(1)
+  if (error || !data || data.length === 0) {
+    console.error('fetch settings error', error?.message || keyedError || error)
     return NextResponse.json({ settings: {} })
   }
-
-  // if table uses a jsonb `value` column, return that object for client convenience
-  if (data && typeof data === 'object' && 'value' in data && data.value) {
-    return NextResponse.json({ settings: data.value })
+  const row: any = data[0]
+  if (row && typeof row === 'object' && 'value' in row && row.value) {
+    return NextResponse.json({ settings: row.value })
   }
-
-  return NextResponse.json({ settings: data })
+  return NextResponse.json({ settings: row })
 }
 
 export async function POST(req: Request) {

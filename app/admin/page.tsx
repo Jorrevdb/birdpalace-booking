@@ -487,6 +487,33 @@ function CalendarPanel({ password }: { password: string }) {
   const [status, setStatus] = useState<{ connected: boolean; calendar_name?: string; calendar_id?: string } | null>(null)
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState('')
+  const [allSettings, setAllSettings] = useState<any>({})
+  const [savingRules, setSavingRules] = useState(false)
+  const [openKeyword, setOpenKeyword] = useState('open')
+  const [closedKeyword, setClosedKeyword] = useState('gesloten')
+  const [weeklySchedule, setWeeklySchedule] = useState<Record<number, { enabled: boolean; times: string }>>({
+    0: { enabled: true, times: '11:00,13:00,15:00' },
+    1: { enabled: false, times: '11:00,13:00,15:00' },
+    2: { enabled: true, times: '11:00,13:00,15:00' },
+    3: { enabled: true, times: '11:00,13:00,15:00' },
+    4: { enabled: true, times: '11:00,13:00,15:00' },
+    5: { enabled: true, times: '11:00,13:00,15:00' },
+    6: { enabled: true, times: '11:00,13:00,15:00' },
+  })
+
+  const dayLabels = ['Zondag', 'Maandag', 'Dinsdag', 'Woensdag', 'Donderdag', 'Vrijdag', 'Zaterdag']
+
+  function buildDefaultSchedule(baseTimes: string): Record<number, { enabled: boolean; times: string }> {
+    return {
+      0: { enabled: true, times: baseTimes },
+      1: { enabled: false, times: baseTimes },
+      2: { enabled: true, times: baseTimes },
+      3: { enabled: true, times: baseTimes },
+      4: { enabled: true, times: baseTimes },
+      5: { enabled: true, times: baseTimes },
+      6: { enabled: true, times: baseTimes },
+    }
+  }
 
   async function fetchStatus() {
     setLoading(true)
@@ -502,7 +529,45 @@ function CalendarPanel({ password }: { password: string }) {
     }
   }
 
-  useEffect(() => { fetchStatus() }, [])
+  async function fetchCalendarRules() {
+    try {
+      const res = await fetch(`/api/admin/settings?password=${encodeURIComponent(password)}`)
+      if (!res.ok) throw new Error('Unauthorized')
+      const data = await res.json()
+      const s = data.settings ?? {}
+      setAllSettings(s)
+
+      const baseTimes = Array.isArray(s.tour_times)
+        ? s.tour_times.join(',')
+        : (s.tour_times || '11:00,13:00,15:00')
+
+      const defaults = buildDefaultSchedule(baseTimes)
+      const rawWeekly = s.weekly_schedule ?? {}
+      const nextWeekly: Record<number, { enabled: boolean; times: string }> = { ...defaults }
+
+      for (let d = 0; d <= 6; d++) {
+        const cfg = rawWeekly[String(d)] ?? rawWeekly[d]
+        if (!cfg) continue
+        nextWeekly[d] = {
+          enabled: typeof cfg.enabled === 'boolean' ? cfg.enabled : defaults[d].enabled,
+          times: Array.isArray(cfg.times)
+            ? cfg.times.join(',')
+            : String(cfg.times ?? defaults[d].times),
+        }
+      }
+
+      setWeeklySchedule(nextWeekly)
+      setOpenKeyword(s.calendar_override_open_keyword || 'open')
+      setClosedKeyword(s.calendar_override_closed_keyword || 'gesloten')
+    } catch (err: any) {
+      setMessage(err.message || 'Kon kalenderregels niet ophalen')
+    }
+  }
+
+  useEffect(() => {
+    fetchStatus()
+    fetchCalendarRules()
+  }, [])
 
   // Listen for the OAuth popup success message
   useEffect(() => {
@@ -555,6 +620,48 @@ function CalendarPanel({ password }: { password: string }) {
     }
   }
 
+  async function saveCalendarRules() {
+    setSavingRules(true)
+    setMessage('')
+    try {
+      const normalizedWeekly: Record<number, { enabled: boolean; times: string[] }> = {} as any
+      for (let d = 0; d <= 6; d++) {
+        const row = weeklySchedule[d]
+        normalizedWeekly[d] = {
+          enabled: !!row.enabled,
+          times: String(row.times || '')
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean),
+        }
+      }
+
+      const payload = {
+        ...allSettings,
+        weekly_schedule: normalizedWeekly,
+        calendar_override_open_keyword: openKeyword.trim() || 'open',
+        calendar_override_closed_keyword: closedKeyword.trim() || 'gesloten',
+      }
+
+      const res = await fetch('/api/admin/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password, settings: payload }),
+      })
+      if (!res.ok) throw new Error('Opslaan mislukt')
+      const data = await res.json()
+      setAllSettings(data.settings ?? payload)
+      setMessage('Kalenderregels opgeslagen')
+
+      try { window.dispatchEvent(new CustomEvent('settings:updated', { detail: data.settings ?? payload })) } catch (e) {}
+      try { localStorage.setItem('settings:updated', JSON.stringify({ ts: Date.now(), settings: data.settings ?? payload })) } catch (e) {}
+    } catch (err: any) {
+      setMessage(err.message || 'Fout bij opslaan')
+    } finally {
+      setSavingRules(false)
+    }
+  }
+
   if (loading) return <p>Laden…</p>
 
   return (
@@ -603,11 +710,77 @@ function CalendarPanel({ password }: { password: string }) {
       <div style={{ marginTop: 24, padding: 16, background: '#f9fafb', borderRadius: 8, fontSize: 13, color: '#6b7280' }}>
         <strong style={{ color: '#374151' }}>Hoe werkt het?</strong>
         <ul style={{ marginTop: 8, paddingLeft: 20, lineHeight: 1.7 }}>
-          <li>Koppel de agenda die medewerkers gebruiken voor planning.</li>
-          <li>Blokkeer een tijdslot door een event aan te maken in die agenda (bv. &quot;Bezet&quot;).</li>
-          <li>Wanneer een tour bevestigd wordt, maakt het systeem automatisch een event aan.</li>
-          <li>Je kan de agenda op elk moment wisselen via &apos;Andere agenda koppelen&apos;.</li>
+          <li>Stel hieronder per weekdag in of boekingen openstaan en welke uren standaard zichtbaar zijn.</li>
+          <li>Maak in Google Calendar een event met het woord <strong>{openKeyword || 'open'}</strong> om die specifieke datum open te forceren.</li>
+          <li>Maak een event met <strong>{closedKeyword || 'gesloten'}</strong> om die datum te sluiten, zelfs als de weekdag standaard open is.</li>
+          <li>Andere events in Google blokkeren overlappende tijdslots automatisch.</li>
         </ul>
+      </div>
+
+      <div style={{ marginTop: 24, padding: 16, background: '#ffffff', border: '1px solid #e5e7eb', borderRadius: 8 }}>
+        <h3 style={{ marginTop: 0 }}>Standaard weekplanning</h3>
+        <p style={{ marginTop: 0, color: '#6b7280', fontSize: 13 }}>
+          Deze planning geldt standaard. Met Google-events op datum-niveau kan je uitzonderingen maken.
+        </p>
+
+        <div style={{ display: 'grid', gap: 10 }}>
+          {dayLabels.map((label, dayIndex) => (
+            <div key={dayIndex} style={{ display: 'grid', gridTemplateColumns: '140px 120px 1fr', gap: 10, alignItems: 'center' }}>
+              <div style={{ fontWeight: 600 }}>{label}</div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={!!weeklySchedule[dayIndex]?.enabled}
+                  onChange={(e) => setWeeklySchedule((prev) => ({
+                    ...prev,
+                    [dayIndex]: { ...prev[dayIndex], enabled: e.target.checked },
+                  }))}
+                />
+                Open
+              </label>
+              <input
+                value={weeklySchedule[dayIndex]?.times ?? ''}
+                onChange={(e) => setWeeklySchedule((prev) => ({
+                  ...prev,
+                  [dayIndex]: { ...prev[dayIndex], times: e.target.value },
+                }))}
+                placeholder="11:00,13:00,15:00"
+                style={{ width: '100%' }}
+              />
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 16 }}>
+          <label style={{ display: 'block' }}>
+            Keyword voor open override
+            <input
+              value={openKeyword}
+              onChange={(e) => setOpenKeyword(e.target.value)}
+              style={{ display: 'block', marginTop: 6, width: '100%' }}
+              placeholder="open"
+            />
+          </label>
+          <label style={{ display: 'block' }}>
+            Keyword voor gesloten override
+            <input
+              value={closedKeyword}
+              onChange={(e) => setClosedKeyword(e.target.value)}
+              style={{ display: 'block', marginTop: 6, width: '100%' }}
+              placeholder="gesloten"
+            />
+          </label>
+        </div>
+
+        <div style={{ marginTop: 14 }}>
+          <button
+            onClick={saveCalendarRules}
+            disabled={savingRules}
+            style={{ padding: '10px 16px', background: '#2d6a4f', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 600 }}
+          >
+            {savingRules ? 'Opslaan…' : 'Kalenderregels opslaan'}
+          </button>
+        </div>
       </div>
     </div>
   )

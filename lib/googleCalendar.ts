@@ -15,7 +15,13 @@
 import { google } from 'googleapis'
 import { supabaseAdmin } from './supabase'
 import { createOAuth2Client } from './googleOAuth'
-import { getSettings, parseTourTimes, getTourDuration } from './settings'
+import {
+  getSettings,
+  parseTourTimes,
+  getTourDuration,
+  getCalendarOpenKeyword,
+  getCalendarClosedKeyword,
+} from './settings'
 import type { Booking } from '@/types'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -104,21 +110,31 @@ function overlaps(
   return es < slotEnd && ee > slotStart
 }
 
+function hasKeyword(summary: string | undefined, keyword: string) {
+  if (!summary || !keyword) return false
+  return summary.toLowerCase().includes(keyword)
+}
+
 // ── Public API ─────────────────────────────────────────────────────────────────
 
 /**
  * Returns available time slots for a given date.
  * Falls back to all configured slots when no calendar is connected.
  */
-export async function getAvailableSlotsForDate(date: string): Promise<string[]> {
+export async function getAvailableSlotsForDate(date: string, defaultSlots?: string[]): Promise<string[]> {
   const ctx = await getCalendarClient()
 
   const settings = await getSettings()
-  const allSlots = parseTourTimes(settings.tour_times)
+  const allSlots = defaultSlots && defaultSlots.length > 0
+    ? [...defaultSlots]
+    : Array.from(parseTourTimes(settings.tour_times))
+  const fallbackAllSlots = Array.from(parseTourTimes(settings.tour_times))
   const duration = getTourDuration(settings.tour_duration_minutes)
+  const openKeyword = getCalendarOpenKeyword(settings.calendar_override_open_keyword)
+  const closedKeyword = getCalendarClosedKeyword(settings.calendar_override_closed_keyword)
 
   if (!ctx) {
-    // No calendar connected → show all slots (same as before)
+    // No calendar connected → show defaults from schedule settings.
     return [...allSlots]
   }
 
@@ -143,10 +159,25 @@ export async function getAvailableSlotsForDate(date: string): Promise<string[]> 
     return [...allSlots]
   }
 
+  const forceClosed = events.some((ev) => hasKeyword(ev.summary ?? '', closedKeyword))
+  const forceOpen = events.some((ev) => hasKeyword(ev.summary ?? '', openKeyword))
+
+  // Closed override always wins if both words accidentally exist on the same date.
+  if (forceClosed) return []
+
+  // Open override can open a normally-closed day (no default slots).
+  const baseSlots = allSlots.length > 0 ? allSlots : (forceOpen ? fallbackAllSlots : [])
+
+  // Ignore marker events when determining busy overlaps.
+  const busyEvents = events.filter((ev) => {
+    const summary = (ev.summary ?? '').toLowerCase()
+    return !summary.includes(openKeyword) && !summary.includes(closedKeyword)
+  })
+
   const available: string[] = []
-  for (const slot of allSlots) {
+  for (const slot of baseSlots) {
     const { start, end } = makeSlotRange(date, slot, duration)
-    const blocked = events.some((ev) =>
+    const blocked = busyEvents.some((ev) =>
       overlaps(
         ev.start?.dateTime ?? ev.start?.date,
         ev.end?.dateTime ?? ev.end?.date,

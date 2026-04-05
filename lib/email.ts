@@ -1,6 +1,6 @@
 import { Resend } from 'resend'
 import { Booking, Worker } from '@/types'
-import { SITE_NAME, SITE_URL, CONTACT_EMAIL } from './config'
+import { getSettings, getSiteName, getSiteUrl, getContactEmail } from './settings'
 import { format, parseISO } from 'date-fns'
 import { nl } from 'date-fns/locale'
 
@@ -8,17 +8,25 @@ const resend = new Resend(process.env.RESEND_API_KEY)
 
 // Temporary sender: use onboarding@resend.dev until birdpalace.be DNS is verified in Resend
 
-const FROM = `${SITE_NAME} <onboarding@birdpalace.be>`
+async function getFrom() {
+  const s = await getSettings()
+  const name = getSiteName(s.site_name)
+  return `${name} <onboarding@birdpalace.be>`
+}
 
 function formatDate(dateStr: string) {
   return format(parseISO(dateStr), 'EEEE d MMMM yyyy', { locale: nl })
 }
 
-// ── Visitor: booking received ─────────────────────────────────────────────────
+// ── Visitor: booking received ────────────────────©─────────────────────────────
 export async function sendBookingReceivedEmail(booking: Booking): Promise<void> {
   try {
+    const from = await getFrom()
+    const s = await getSettings()
+    const siteUrl = getSiteUrl((s as any).site_url)
+    const contact = getContactEmail(s.contact_email)
     await resend.emails.send({
-      from: FROM,
+      from,
       to: booking.visitor_email,
       subject: `Aanvraag ontvangen – ${formatDate(booking.tour_date)} om ${booking.tour_time}`,
       html: `
@@ -31,8 +39,8 @@ export async function sendBookingReceivedEmail(booking: Booking): Promise<void> 
             <tr><td style="padding:8px 0;color:#666">Personen</td><td style="padding:8px 0;font-weight:600">${booking.total_people} (${booking.children_count} kinderen)</td></tr>
             <tr><td style="padding:8px 0;color:#666">Pinguïns voeren</td><td style="padding:8px 0;font-weight:600">${booking.penguin_feeding_count} persoon${booking.penguin_feeding_count !== 1 ? 'en' : ''}</td></tr>
           </table>
-          <a href="${SITE_URL}/booking/${booking.edit_token}" style="display:inline-block;padding:12px 24px;background:#2d6a4f;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Bekijk boekingsstatus</a>
-          <p style="margin-top:32px;color:#888;font-size:13px">Vragen? Mail ons op <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
+          <a href="${siteUrl}/booking/${booking.edit_token}" style="display:inline-block;padding:12px 24px;background:#2d6a4f;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Bekijk boekingsstatus</a>
+          <p style="margin-top:32px;color:#888;font-size:13px">Vragen? Mail ons op <a href="mailto:${contact}">${contact}</a></p>
         </div>
       `,
     })
@@ -47,12 +55,14 @@ export async function sendWorkerNotificationEmail(
   worker: Worker,
   responseToken: string
 ): Promise<void> {
-  const acceptUrl = `${SITE_URL}/worker/respond/${responseToken}?action=accept`
-  const declineUrl = `${SITE_URL}/worker/respond/${responseToken}?action=decline`
-
   try {
+    const from = await getFrom()
+    const s = await getSettings()
+    const siteUrl = getSiteUrl((s as any).site_url)
+    const acceptUrl = `${siteUrl}/worker/respond/${responseToken}?action=accept`
+    const declineUrl = `${siteUrl}/worker/respond/${responseToken}?action=decline`
     await resend.emails.send({
-      from: FROM,
+      from,
       to: worker.email,
       subject: `Nieuw boekingsverzoek – ${formatDate(booking.tour_date)} om ${booking.tour_time}`,
       html: `
@@ -85,8 +95,11 @@ export async function sendBookingApprovedEmail(
   workerName: string
 ): Promise<void> {
   try {
+    const from = await getFrom()
+    const s = await getSettings()
+    const siteUrl = getSiteUrl((s as any).site_url)
     await resend.emails.send({
-      from: FROM,
+      from,
       to: booking.visitor_email,
       subject: `Tour bevestigd! – ${formatDate(booking.tour_date)} om ${booking.tour_time}`,
       html: `
@@ -99,7 +112,7 @@ export async function sendBookingApprovedEmail(
             <tr><td style="padding:8px 0;color:#666">Personen</td><td style="padding:8px 0;font-weight:600">${booking.total_people} (${booking.children_count} kinderen)</td></tr>
           </table>
           ${booking.worker_message ? `<blockquote style="border-left:4px solid #2d6a4f;margin:0;padding:12px 16px;background:#f0fdf4;border-radius:0 8px 8px 0">${booking.worker_message}</blockquote>` : ''}
-          <a href="${SITE_URL}/booking/${booking.edit_token}" style="display:inline-block;margin-top:24px;padding:12px 24px;background:#2d6a4f;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Bekijk boeking</a>
+          <a href="${siteUrl}/booking/${booking.edit_token}" style="display:inline-block;margin-top:24px;padding:12px 24px;background:#2d6a4f;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Bekijk boeking</a>
         </div>
       `,
     })
@@ -114,8 +127,12 @@ export async function sendBookingDeniedEmail(
   workerMessage?: string
 ): Promise<void> {
   try {
+    const from = await getFrom()
+    const s = await getSettings()
+    const siteUrl = getSiteUrl((s as any).site_url)
+    const contact = getContactEmail(s.contact_email)
     await resend.emails.send({
-      from: FROM,
+      from,
       to: booking.visitor_email,
       subject: `Helaas – ${formatDate(booking.tour_date)} om ${booking.tour_time} niet beschikbaar`,
       html: `
@@ -123,7 +140,7 @@ export async function sendBookingDeniedEmail(
           <h2 style="color:#dc2626">Helaas...</h2>
           <p>We kunnen de tour op ${formatDate(booking.tour_date)} om ${booking.tour_time} niet bevestigen.</p>
           ${workerMessage ? `<blockquote style="border-left:4px solid #dc2626;margin:0;padding:12px 16px;background:#fef2f2">${workerMessage}</blockquote>` : ''}
-          <a href="${SITE_URL}" style="display:inline-block;margin-top:24px;padding:12px 24px;background:#2d6a4f;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Kies een andere datum</a>
+          <a href="${siteUrl}" style="display:inline-block;margin-top:24px;padding:12px 24px;background:#2d6a4f;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Kies een andere datum</a>
         </div>
       `,
     })
@@ -138,8 +155,11 @@ export async function sendSlotTakenEmail(
   booking: Booking
 ): Promise<void> {
   try {
+    const from = await getFrom()
+    const s = await getSettings()
+    const siteUrl = getSiteUrl((s as any).site_url)
     await resend.emails.send({
-      from: FROM,
+      from,
       to: worker.email,
       subject: `Boeking al ingenomen – ${formatDate(booking.tour_date)} om ${booking.tour_time}`,
       html: `

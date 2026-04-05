@@ -1,0 +1,15 @@
+  ▲ Next.js 14.2.5
+  - Local:        http://localhost:3010
+  - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Ready in 1057ms
+ ✓ Compiled /api/settings in 133ms (94 modules)
+ GET /api/settings 200 in 194ms
+(node:35234) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ○ Compiling / ...
+ ✓ Compiled / in 1651ms (2218 modules)
+ ✓ Compiled in 98ms (1067 modules)
+ GET / 200 in 2187ms
+ ✓ Compiled in 183ms (1067 modules)

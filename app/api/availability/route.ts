@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { getSettings, parseTourTimes } from '@/lib/settings'
 
 // Returns available slots per date.
 // Currently: all 3 slots shown on any day that has at least 1 active worker,
@@ -21,7 +22,8 @@ export async function GET(req: NextRequest) {
     .select('id', { count: 'exact', head: true })
     .eq('active', true)
 
-  const allSlots = ['11:00', '13:00', '15:00']
+  const settings = await getSettings()
+  const allSlots = parseTourTimes(settings.tour_times)
   const availability: Record<string, string[]> = {}
 
   const current = new Date(from)

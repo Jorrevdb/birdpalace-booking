@@ -24,9 +24,24 @@
   max-width: 100%;
 }
 
+:root {
+  --primary-color: #16a34a;
+  --primary-color-600: #16a34a;
+  --primary-color-700: #15803d;
+}
+
+/* react-day-picker overrides */
+.rdp {
+  --rdp-cell-size: 44px;
+  --rdp-accent-color: var(--primary-color-600);
+  --rdp-background-color: #f0fdf4;
+  margin: 0;
+  width: 100%;
+}
+
 .rdp-day_available:not(.rdp-day_selected):not(.rdp-day_disabled) {
   font-weight: 600;
-  color: #15803d;
+  color: var(--primary-color-700);
 }
 
 .rdp-day_available:not(.rdp-day_selected):not(.rdp-day_disabled)::after {
@@ -34,7 +49,14 @@
   display: block;
   width: 4px;
   height: 4px;
-  background: #22c55e;
+  background: var(--primary-color-600);
   border-radius: 50%;
   margin: 2px auto 0;
 }
+
+/* Override a few Tailwind brand utility classes to use the runtime primary color */
+.bg-brand-600 { background-color: var(--primary-color-600) !important }
+.bg-brand-700 { background-color: var(--primary-color-700) !important }
+.text-brand-700 { color: var(--primary-color-700) !important }
+.border-brand-600 { border-color: var(--primary-color-600) !important }
+.bg-brand-50 { background-color: rgba(22,163,74,0.08) !important }

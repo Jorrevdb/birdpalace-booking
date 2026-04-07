@@ -2,12 +2,104 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import type { Settings } from '@/lib/settings'
-import { DayPicker } from 'react-day-picker'
 import { nl } from 'date-fns/locale'
-import { format, addDays, parseISO, startOfMonth, endOfMonth } from 'date-fns'
+import { format, addMonths, parseISO, startOfMonth, endOfMonth, startOfToday } from 'date-fns'
 import { StepIndicator } from '@/components/StepIndicator'
 import { Counter } from '@/components/Counter'
-import 'react-day-picker/dist/style.css'
+
+// ── Custom Calendar ────────────────────────────────────────────────────────────
+// Week starts on Monday. Dutch abbreviated day names.
+const WEEKDAY_LABELS = ['Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za', 'Zo']
+
+function CalendarGrid({
+  month,
+  selectedDateStr,
+  availability,
+  onSelect,
+}: {
+  month: Date
+  selectedDateStr: string
+  availability: Record<string, string[]>
+  onSelect: (dateStr: string) => void
+}) {
+  const today = startOfToday()
+  const todayStr = format(today, 'yyyy-MM-dd')
+  const first = startOfMonth(month)
+  const daysInMonth = endOfMonth(month).getDate()
+
+  // Monday-first offset: Mon=0 … Sun=6
+  const rawStartDay = first.getDay() // 0=Sun … 6=Sat
+  const mondayOffset = (rawStartDay + 6) % 7
+
+  const cells: (Date | null)[] = [
+    ...Array(mondayOffset).fill(null),
+    ...Array.from({ length: daysInMonth }, (_, i) =>
+      new Date(month.getFullYear(), month.getMonth(), i + 1)
+    ),
+  ]
+  // Pad to complete the last row
+  while (cells.length % 7 !== 0) cells.push(null)
+
+  return (
+    <div className="w-full">
+      {/* Weekday headers */}
+      <div className="grid grid-cols-7 mb-1">
+        {WEEKDAY_LABELS.map((label) => (
+          <div key={label} className="text-center text-xs font-medium text-gray-400 py-2 select-none">
+            {label}
+          </div>
+        ))}
+      </div>
+
+      {/* Day cells */}
+      <div className="grid grid-cols-7">
+        {cells.map((day, idx) => {
+          if (!day) return <div key={`e-${idx}`} className="h-[54px]" />
+
+          const dateStr = format(day, 'yyyy-MM-dd')
+          const isToday = dateStr === todayStr
+          const isSelected = dateStr === selectedDateStr
+          const isPast = day < today
+          const isAvailable = (availability[dateStr]?.length ?? 0) > 0 && !isPast
+
+          // Dot = today indicator (always, unless selected — then the fill says it all)
+          const showDot = isToday && !isSelected
+
+          let circleClass = ''
+          if (isSelected) {
+            circleClass = 'bg-brand-600 text-white'
+          } else if (isAvailable) {
+            // Green ring = bookable
+            circleClass = 'ring-2 ring-brand-600 text-gray-900 hover:bg-brand-50 cursor-pointer'
+          } else {
+            circleClass = 'text-gray-300 cursor-default'
+          }
+
+          return (
+            <div key={dateStr} className="flex items-center justify-center h-[54px]">
+              <button
+                type="button"
+                disabled={!isAvailable}
+                onClick={() => isAvailable && onSelect(dateStr)}
+                className={`relative flex items-center justify-center w-10 h-10 rounded-full text-sm font-semibold transition-colors select-none focus:outline-none ${circleClass}`}
+              >
+                {/* Number — nudge up slightly when dot sits below */}
+                <span className={showDot ? 'translate-y-[-2px]' : ''}>
+                  {day.getDate()}
+                </span>
+
+                {/* Today dot */}
+                {showDot && (
+                  <span className="absolute bottom-[7px] left-1/2 -translate-x-1/2 w-[5px] h-[5px] rounded-full bg-gray-900" />
+                )}
+              </button>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
 
 type Step = 1 | 2 | 3 | 'done'
 
@@ -30,8 +122,6 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
   const [selectedMonth, setSelectedMonth] = useState(new Date())
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
-  const [availabilityExplain, setAvailabilityExplain] = useState<any | null>(null)
-  const [loadingExplain, setLoadingExplain] = useState(false)
   const [editToken, setEditToken] = useState('')
 
   const [form, setForm] = useState<BookingForm>({
@@ -49,7 +139,7 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
     setLoadingAvailability(true)
     try {
       const from = format(startOfMonth(month), 'yyyy-MM-dd')
-      const to = format(endOfMonth(addDays(month, 40)), 'yyyy-MM-dd')
+      const to = format(endOfMonth(addMonths(month, 1)), 'yyyy-MM-dd')
       const res = await fetch(`/api/availability?from=${from}&to=${to}`)
       const data = await res.json()
       setAvailability((prev) => ({ ...prev, ...data.availability }))
@@ -120,44 +210,9 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
     return () => { window.removeEventListener('settings:updated', onSettingsUpdate); window.removeEventListener('storage', onStorage) }
   }, [selectedMonth, fetchAvailability, initialSettings])
 
-  const availableDays = Object.keys(availability)
-    .filter((d) => availability[d].length > 0)
-    .map((d) => parseISO(d))
-
-  const selectedDate = form.tour_date ? parseISO(form.tour_date) : undefined
-
-  function handleDaySelect(day: Date | undefined) {
-    if (!day) return
-    const dateStr = format(day, 'yyyy-MM-dd')
-    setForm((f) => ({ ...f, tour_date: dateStr, tour_time: '' }))
-  }
-
   function handleTimeSelect(time: string) {
     setForm((f) => ({ ...f, tour_time: time }))
   }
-
-  useEffect(() => {
-    if (!form.tour_date) {
-      setAvailabilityExplain(null)
-      return
-    }
-
-    let cancelled = false
-    ;(async () => {
-      setLoadingExplain(true)
-      try {
-        const res = await fetch(`/api/availability/explain?date=${encodeURIComponent(form.tour_date)}`)
-        const data = await res.json()
-        if (!cancelled) setAvailabilityExplain(data.explain ?? null)
-      } catch (err) {
-        if (!cancelled) setAvailabilityExplain(null)
-      } finally {
-        if (!cancelled) setLoadingExplain(false)
-      }
-    })()
-
-    return () => { cancelled = true }
-  }, [form.tour_date])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -190,6 +245,8 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
   // ─────────────────────────────────────────
   if (step === 1) {
     const slotsForSelectedDate = form.tour_date ? (availability[form.tour_date] ?? []) : []
+    const monthLabelRaw = format(selectedMonth, 'MMMM yyyy', { locale: nl })
+    const monthLabel = monthLabelRaw.charAt(0).toUpperCase() + monthLabelRaw.slice(1)
 
     return (
       <div className="min-h-screen bg-gray-50 py-8 px-4">
@@ -199,30 +256,53 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
           <StepIndicator currentStep={1} />
 
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-            {loadingAvailability && availableDays.length === 0 ? (
+            {loadingAvailability && Object.keys(availability).length === 0 ? (
               <div className="flex justify-center py-12">
                 <div className="w-8 h-8 border-2 border-brand-600 border-t-transparent rounded-full animate-spin" />
               </div>
             ) : (
               <>
-                <DayPicker
-                  mode="single"
-                  selected={selectedDate}
-                  onSelect={handleDaySelect}
-                  locale={nl}
-                  month={selectedMonth}
-                  onMonthChange={setSelectedMonth}
-                  disabled={[
-                    { before: addDays(new Date(), 1) },
-                    (day) => {
-                      const d = format(day, 'yyyy-MM-dd')
-                      return !availability[d] || availability[d].length === 0
-                    },
-                  ]}
-                  modifiers={{ available: availableDays }}
-                  modifiersClassNames={{ available: 'rdp-day_available' }}
-                  className="w-full"
-                />
+                <div className="w-full">
+                  {/* Month navigation — same width as calendar grid below */}
+                  <div className="grid grid-cols-[auto_1fr_auto] items-center gap-4 mb-4">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedMonth(new Date())}
+                      className="px-4 py-2.5 rounded-2xl bg-gray-100 text-gray-900 text-sm font-semibold hover:bg-gray-200 transition-colors whitespace-nowrap"
+                    >
+                      Vandaag
+                    </button>
+
+                    <h3 className="text-2xl font-semibold text-gray-900 text-center">{monthLabel}</h3>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedMonth((m) => addMonths(m, -1))}
+                        className="w-10 h-10 rounded-2xl border border-gray-300 bg-white hover:bg-gray-50 text-gray-900 text-xl leading-none transition-colors"
+                        aria-label="Vorige maand"
+                      >
+                        ←
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedMonth((m) => addMonths(m, 1))}
+                        className="w-10 h-10 rounded-2xl border border-gray-300 bg-white hover:bg-gray-50 text-gray-900 text-xl leading-none transition-colors"
+                        aria-label="Volgende maand"
+                      >
+                        →
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Custom calendar — full card width */}
+                  <CalendarGrid
+                    month={selectedMonth}
+                    selectedDateStr={form.tour_date}
+                    availability={availability}
+                    onSelect={(dateStr) => setForm((f) => ({ ...f, tour_date: dateStr, tour_time: '' }))}
+                  />
+                </div>
 
                 {form.tour_date && (
                   <div className="mt-4 pt-4 border-t border-gray-100">
@@ -240,7 +320,7 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
                           className={`px-5 py-3 rounded-xl border-2 text-sm font-semibold transition-all ${
                             form.tour_time === time
                               ? 'bg-brand-600 border-brand-600 text-white shadow-sm'
-                              : 'border-gray-200 text-gray-700 hover:border-brand-400 hover:text-brand-700'
+                              : 'border-gray-200 text-gray-700 hover:border-brand-600 hover:bg-brand-50 hover:text-brand-700'
                           }`}
                         >
                           {time}
@@ -248,29 +328,6 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
                       ))}
                     </div>
 
-                    <div className="mt-4 bg-gray-50 border border-gray-200 rounded-xl p-3 text-xs text-gray-700">
-                      <p className="font-semibold mb-1">Waarom is deze datum beschikbaar/niet beschikbaar?</p>
-                      {loadingExplain ? (
-                        <p>Logica laden…</p>
-                      ) : availabilityExplain ? (
-                        <ul className="list-disc pl-4 space-y-1">
-                          {availabilityExplain.reason === 'no_active_workers' ? (
-                            <li>Geen actieve medewerkers gevonden.</li>
-                          ) : (
-                            <>
-                              <li>Standaard tab: <strong>{availabilityExplain.defaultTab?.name ?? 'Default'}</strong></li>
-                              <li>Actieve tab voor deze datum: <strong>{availabilityExplain.activeTab?.name ?? 'Default'}</strong></li>
-                              <li>Keyword match: <strong>{availabilityExplain.matchedKeyword ?? 'geen'}</strong></li>
-                              <li>Start slots: <strong>{(availabilityExplain.baseSlots ?? []).join(', ') || 'geen'}</strong></li>
-                              <li>Beschikbaar: <strong>{(availabilityExplain.availableSlots ?? []).join(', ') || 'geen'}</strong></li>
-                              <li>Geblokkeerd door events: <strong>{(availabilityExplain.blockedSlots ?? []).length}</strong></li>
-                            </>
-                          )}
-                        </ul>
-                      ) : (
-                        <p>Geen debug-info beschikbaar.</p>
-                      )}
-                    </div>
                   </div>
                 )}
               </>

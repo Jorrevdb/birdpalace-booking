@@ -54,7 +54,7 @@ function CalendarGrid({
       {/* Day cells */}
       <div className="grid grid-cols-7">
         {cells.map((day, idx) => {
-          if (!day) return <div key={`e-${idx}`} className="h-[54px]" />
+          if (!day) return <div key={`e-${idx}`} className="h-12 sm:h-[54px]" />
 
           const dateStr = format(day, 'yyyy-MM-dd')
           const isToday = dateStr === todayStr
@@ -76,12 +76,12 @@ function CalendarGrid({
           }
 
           return (
-            <div key={dateStr} className="flex items-center justify-center h-[54px]">
+            <div key={dateStr} className="flex items-center justify-center h-12 sm:h-[54px]">
               <button
                 type="button"
                 disabled={!isAvailable}
                 onClick={() => isAvailable && onSelect(dateStr)}
-                className={`relative flex items-center justify-center w-10 h-10 rounded-full text-sm font-semibold transition-colors select-none focus:outline-none ${circleClass}`}
+                className={`relative flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-full text-xs sm:text-sm font-semibold transition-colors select-none focus:outline-none ${circleClass}`}
               >
                 {/* Number — nudge up slightly when dot sits below */}
                 <span className={showDot ? 'translate-y-[-2px]' : ''}>
@@ -90,7 +90,7 @@ function CalendarGrid({
 
                 {/* Today dot */}
                 {showDot && (
-                  <span className="absolute bottom-[7px] left-1/2 -translate-x-1/2 w-[5px] h-[5px] rounded-full bg-gray-900" />
+                  <span className="absolute bottom-[6px] left-1/2 -translate-x-1/2 w-[4px] h-[4px] sm:w-[5px] sm:h-[5px] rounded-full bg-gray-900" />
                 )}
               </button>
             </div>

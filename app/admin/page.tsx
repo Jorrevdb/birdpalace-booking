@@ -213,14 +213,42 @@ function BookingsTable({ password }: { password: string }) {
   const [bookings, setBookings] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
-  const [workers, setWorkers] = useState<any[]>([])
   const [modalOpen, setModalOpen] = useState(false)
   const [activeBooking, setActiveBooking] = useState<any | null>(null)
-  const [actionType, setActionType] = useState<'accept' | 'deny' | 'reschedule'>('accept')
-  const [selectedWorkerId, setSelectedWorkerId] = useState<string | null>(null)
-  const [actionMessage, setActionMessage] = useState('')
-  const [newDate, setNewDate] = useState('')
-  const [newTime, setNewTime] = useState('')
+  const [savingModal, setSavingModal] = useState(false)
+  const [deletingModal, setDeletingModal] = useState(false)
+  const [notifyVisitor, setNotifyVisitor] = useState(true)
+
+  const [formStatus, setFormStatus] = useState('pending')
+  const [formDate, setFormDate] = useState('')
+  const [formTime, setFormTime] = useState('')
+  const [formName, setFormName] = useState('')
+  const [formEmail, setFormEmail] = useState('')
+  const [formPhone, setFormPhone] = useState('')
+  const [formAdults, setFormAdults] = useState(1)
+  const [formChildren, setFormChildren] = useState(0)
+  const [formFeeding, setFormFeeding] = useState(0)
+  const [formWorkerMessage, setFormWorkerMessage] = useState('')
+
+  function formatNlDate(isoDate: string) {
+    try {
+      const d = new Date(`${isoDate}T00:00:00`)
+      return new Intl.DateTimeFormat('nl-BE', {
+        weekday: 'short',
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric',
+      }).format(d)
+    } catch {
+      return isoDate
+    }
+  }
+
+  function statusStyle(status: string) {
+    if (status === 'approved') return { border: '1px solid #16a34a', color: '#166534', background: '#f0fdf4' }
+    if (status === 'denied') return { border: '1px solid #dc2626', color: '#991b1b', background: '#fef2f2' }
+    return { border: '1px solid #d1d5db', color: '#374151', background: '#fff' }
+  }
 
   async function fetchBookings() {
     setLoading(true)
@@ -228,62 +256,119 @@ function BookingsTable({ password }: { password: string }) {
       const res = await fetch(`/api/admin/bookings/list?password=${encodeURIComponent(password)}`)
       if (!res.ok) throw new Error('Unauthorized')
       const data = await res.json()
-      setBookings(data.bookings ?? [])
+      const sorted = (data.bookings ?? []).slice().sort((a: any, b: any) => {
+        const aKey = `${a.tour_date} ${a.tour_time}`
+        const bKey = `${b.tour_date} ${b.tour_time}`
+        if (aKey < bKey) return -1
+        if (aKey > bKey) return 1
+        return 0
+      })
+      setBookings(sorted)
     } catch (err: any) {
       setMessage(err.message || 'Failed to fetch bookings')
     } finally {
       setLoading(false)
     }
   }
-  useEffect(() => { fetchBookings(); fetchWorkers(); }, [])
+  useEffect(() => { fetchBookings() }, [])
 
-  async function fetchWorkers() {
-    try {
-      const res = await fetch(`/api/admin/workers/list?password=${encodeURIComponent(password)}`)
-      if (!res.ok) return
-      const data = await res.json()
-      setWorkers(data.workers ?? [])
-    } catch (err) {
-      // ignore
-    }
-  }
-
-  function openModalFor(booking: any, type: 'accept'|'deny'|'reschedule') {
+  function openModalFor(booking: any) {
     setActiveBooking(booking)
-    setActionType(type)
-    setSelectedWorkerId(null)
-    setActionMessage('')
-    setNewDate('')
-    setNewTime('')
+    setFormStatus(booking.status || 'pending')
+    setFormDate(booking.tour_date || '')
+    setFormTime(booking.tour_time || '')
+    setFormName(booking.visitor_name || '')
+    setFormEmail(booking.visitor_email || '')
+    setFormPhone(booking.visitor_phone || '')
+    setFormAdults(Number(booking.total_people || 1))
+    setFormChildren(Number(booking.children_count || 0))
+    setFormFeeding(Number(booking.penguin_feeding_count || 0))
+    setFormWorkerMessage(booking.worker_message || '')
+    setNotifyVisitor(true)
     setModalOpen(true)
   }
 
-  async function submitAction() {
-    if (!activeBooking) return
-    const body: any = { password, action: actionType }
-    if (actionType === 'accept') {
-      if (!selectedWorkerId) { alert('Choose a worker'); return }
-      body.worker_id = selectedWorkerId
-      body.message = actionMessage
-    }
-    if (actionType === 'deny') {
-      body.message = actionMessage
-    }
-    if (actionType === 'reschedule') {
-      if (!newDate || !newTime) { alert('Provide new date and time'); return }
-      body.new_date = newDate
-      body.new_time = newTime
-    }
-
+  async function quickUpdateStatus(booking: any, newStatus: string) {
     try {
-      const res = await fetch(`/api/admin/bookings/${activeBooking.id}/action`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      const res = await fetch(`/api/admin/bookings/${booking.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          password,
+          updates: { status: newStatus },
+          notify: false,
+        }),
+      })
       const data = await res.json()
-      if (!data.ok) throw new Error(data.message || 'Action failed')
+      if (!res.ok || !data.ok) throw new Error(data.message || 'Status update failed')
+      fetchBookings()
+    } catch (err: any) {
+      setMessage(err.message || 'Status update failed')
+    }
+  }
+
+  async function saveModalEdits() {
+    if (!activeBooking) return
+    setSavingModal(true)
+    try {
+      const payload = {
+        password,
+        updates: {
+          status: formStatus,
+          tour_date: formDate,
+          tour_time: formTime,
+          visitor_name: formName,
+          visitor_email: formEmail,
+          visitor_phone: formPhone,
+          total_people: Number(formAdults || 1),
+          children_count: Number(formChildren || 0),
+          penguin_feeding_count: Number(formFeeding || 0),
+          worker_message: formWorkerMessage || null,
+        },
+        notify: notifyVisitor,
+      }
+
+      const res = await fetch(`/api/admin/bookings/${activeBooking.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.ok) throw new Error(data.message || 'Save failed')
       setModalOpen(false)
       fetchBookings()
-      alert('Action completed')
+      setMessage(notifyVisitor ? 'Boeking opgeslagen en e-mail verstuurd.' : 'Boeking opgeslagen.')
     } catch (err: any) {
-      alert(err.message || 'Error')
+      setMessage(err.message || 'Error saving booking')
+    } finally {
+      setSavingModal(false)
+    }
+  }
+
+  async function deleteActiveBooking() {
+    if (!activeBooking) return
+    if (!confirm('Weet je zeker dat je deze boeking wil verwijderen?')) return
+
+    setDeletingModal(true)
+    try {
+      const res = await fetch(`/api/admin/bookings/${activeBooking.id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      })
+      let data: any = {}
+      try {
+        data = await res.json()
+      } catch {}
+      if (!res.ok || !data.ok) throw new Error(data.message || 'Verwijderen mislukt')
+
+      closeModal()
+      fetchBookings()
+      setMessage('Boeking verwijderd.')
+    } catch (err: any) {
+      setMessage(err.message || 'Error deleting booking')
+    } finally {
+      setDeletingModal(false)
     }
   }
 
@@ -296,81 +381,145 @@ function BookingsTable({ password }: { password: string }) {
     <div>
       {loading ? <p>Loading…</p> : (
         <>
-        <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 12 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 12, fontSize: 18 }}>
           <thead>
             <tr>
-              <th style={{ textAlign: 'left', padding: 8 }}>Date</th>
-              <th style={{ textAlign: 'left', padding: 8 }}>Time</th>
-              <th style={{ textAlign: 'left', padding: 8 }}>Visitor</th>
-              <th style={{ textAlign: 'left', padding: 8 }}>People</th>
-              <th style={{ textAlign: 'left', padding: 8 }}>Status</th>
-              <th style={{ textAlign: 'left', padding: 8 }}>Actions</th>
+              <th style={{ textAlign: 'left', padding: '12px 8px', borderBottom: '1px solid #e5e7eb' }}>Datum</th>
+              <th style={{ textAlign: 'left', padding: '12px 8px', borderBottom: '1px solid #e5e7eb' }}>Tijd</th>
+              <th style={{ textAlign: 'left', padding: '12px 8px', borderBottom: '1px solid #e5e7eb' }}>Name</th>
+              <th style={{ textAlign: 'left', padding: '12px 8px', borderBottom: '1px solid #e5e7eb' }}>Totaal Personen</th>
+              <th style={{ textAlign: 'left', padding: '12px 8px', borderBottom: '1px solid #e5e7eb' }}>Status</th>
+              <th style={{ textAlign: 'right', padding: '12px 8px', borderBottom: '1px solid #e5e7eb' }}></th>
             </tr>
           </thead>
           <tbody>
             {bookings.map((b) => (
               <tr key={b.id}>
-                <td style={{ padding: 8 }}>{b.tour_date}</td>
-                <td style={{ padding: 8 }}>{b.tour_time}</td>
-                <td style={{ padding: 8 }}>{b.visitor_name} ({b.visitor_email})</td>
-                <td style={{ padding: 8 }}>{b.total_people}</td>
-                <td style={{ padding: 8 }}>{b.status}</td>
-                <td style={{ padding: 8 }}>
-                  <button onClick={() => openModalFor(b, 'accept')} style={{ marginRight: 8 }}>Accept</button>
-                  <button onClick={() => openModalFor(b, 'deny')} style={{ marginRight: 8 }}>Deny</button>
-                  <button onClick={() => openModalFor(b, 'reschedule')}>Reschedule</button>
+                <td style={{ padding: '16px 8px', borderBottom: '1px solid #f3f4f6' }}>{formatNlDate(b.tour_date)}</td>
+                <td style={{ padding: '16px 8px', borderBottom: '1px solid #f3f4f6' }}>{b.tour_time}</td>
+                <td style={{ padding: '16px 8px', borderBottom: '1px solid #f3f4f6' }}>{b.visitor_name}</td>
+                <td style={{ padding: '16px 8px', borderBottom: '1px solid #f3f4f6' }}>{b.total_people}</td>
+                <td style={{ padding: '16px 8px', borderBottom: '1px solid #f3f4f6' }}>
+                  <select
+                    value={b.status}
+                    onChange={(e) => quickUpdateStatus(b, e.target.value)}
+                    style={{
+                      ...statusStyle(b.status),
+                      borderRadius: 999,
+                      padding: '6px 14px',
+                      fontWeight: 600,
+                    }}
+                  >
+                    <option value="pending">Afwachtend</option>
+                    <option value="approved">Geaccepteerd</option>
+                    <option value="denied">Geweigerd</option>
+                  </select>
+                </td>
+                <td style={{ padding: '16px 8px', borderBottom: '1px solid #f3f4f6', textAlign: 'right' }}>
+                  <button
+                    onClick={() => window.open(`/booking/${b.edit_token}`, '_blank')}
+                    style={{ marginRight: 10, background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 20 }}
+                    title="Bekijk boeking"
+                  >
+                    👁
+                  </button>
+                  <button
+                    onClick={() => openModalFor(b)}
+                    style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 20 }}
+                    title="Bewerk boeking"
+                  >
+                    ✎
+                  </button>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
         {modalOpen && activeBooking && (
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{ background: '#fff', padding: 20, borderRadius: 8, width: 640, maxWidth: '95%' }}>
-              <h3>Booking: {activeBooking.visitor_name} — {activeBooking.tour_date} {activeBooking.tour_time}</h3>
-              <div style={{ marginTop: 12 }}>
-                <label style={{ display: 'block', marginBottom: 8 }}>Action
-                  <select value={actionType} onChange={(e) => setActionType(e.target.value as any)} style={{ display: 'block', marginTop: 6 }}>
-                    <option value="accept">Accept</option>
-                    <option value="deny">Deny</option>
-                    <option value="reschedule">Reschedule</option>
-                  </select>
-                </label>
+          <div onClick={closeModal} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 40 }}>
+            <div onClick={(e) => e.stopPropagation()} style={{ position: 'relative', background: '#fff', borderRadius: 16, width: 980, maxWidth: '96%', padding: 24 }}>
+              <button
+                onClick={closeModal}
+                aria-label="Modal sluiten"
+                style={{ position: 'absolute', top: 12, right: 12, width: 36, height: 36, borderRadius: 999, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', fontSize: 20, lineHeight: 1 }}
+              >
+                ×
+              </button>
+              <h2 style={{ margin: 0, fontSize: 42, lineHeight: 1.05 }}>{formName || 'Boeking voornaam achternaam'}</h2>
+              <p style={{ color: '#6b7280', marginTop: 10 }}>Laatst gewijzigd: {new Date().toLocaleString('nl-BE')}</p>
 
-                {actionType === 'accept' && (
-                  <>
-                    <label style={{ display: 'block', marginTop: 8 }}>Assign worker
-                      <select value={selectedWorkerId ?? ''} onChange={(e) => setSelectedWorkerId(e.target.value)} style={{ display: 'block', marginTop: 6, width: '100%' }}>
-                        <option value="">Select worker</option>
-                        {workers.map((w) => <option key={w.id} value={w.id}>{w.name} — {w.email}</option>)}
-                      </select>
-                    </label>
-                    <label style={{ display: 'block', marginTop: 8 }}>Message to visitor
-                      <textarea value={actionMessage} onChange={(e) => setActionMessage(e.target.value)} style={{ display: 'block', marginTop: 6, width: '100%' }} />
-                    </label>
-                  </>
-                )}
-
-                {actionType === 'deny' && (
-                  <label style={{ display: 'block', marginTop: 8 }}>Message to visitor
-                    <textarea value={actionMessage} onChange={(e) => setActionMessage(e.target.value)} style={{ display: 'block', marginTop: 6, width: '100%' }} />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginTop: 20 }}>
+                <div style={{ paddingRight: 20, borderRight: '1px solid #e5e7eb' }}>
+                  <h3 style={{ fontSize: 28, marginTop: 0 }}>Klant gegevens</h3>
+                  <label style={{ display: 'block', marginTop: 10 }}>
+                    Naam
+                    <input value={formName} onChange={(e) => setFormName(e.target.value)} style={{ display: 'block', marginTop: 6, width: '100%', padding: 12, borderRadius: 12, border: '1px solid #d1d5db' }} />
                   </label>
-                )}
+                  <label style={{ display: 'block', marginTop: 12 }}>
+                    E-mailadres
+                    <input value={formEmail} onChange={(e) => setFormEmail(e.target.value)} style={{ display: 'block', marginTop: 6, width: '100%', padding: 12, borderRadius: 12, border: '1px solid #d1d5db' }} />
+                  </label>
+                  <label style={{ display: 'block', marginTop: 12 }}>
+                    Telefoon nummer
+                    <input value={formPhone} onChange={(e) => setFormPhone(e.target.value)} style={{ display: 'block', marginTop: 6, width: '100%', padding: 12, borderRadius: 12, border: '1px solid #d1d5db' }} />
+                  </label>
+                </div>
 
-                {actionType === 'reschedule' && (
-                  <>
-                    <label style={{ display: 'block', marginTop: 8 }}>New date
-                      <input value={newDate} onChange={(e) => setNewDate(e.target.value)} placeholder="YYYY-MM-DD" style={{ display: 'block', marginTop: 6 }} />
-                    </label>
-                    <label style={{ display: 'block', marginTop: 8 }}>New time
-                      <input value={newTime} onChange={(e) => setNewTime(e.target.value)} placeholder="HH:MM" style={{ display: 'block', marginTop: 6 }} />
-                    </label>
-                  </>
-                )}
+                <div>
+                  <h3 style={{ fontSize: 28, marginTop: 0 }}>Boekingsgegevens</h3>
+                  <label style={{ display: 'block', marginTop: 10 }}>
+                    Status
+                    <select value={formStatus} onChange={(e) => setFormStatus(e.target.value)} style={{ ...statusStyle(formStatus), display: 'block', marginTop: 6, padding: '10px 14px', borderRadius: 999, fontWeight: 700 }}>
+                      <option value="pending">Afwachtend</option>
+                      <option value="approved">Geaccepteerd</option>
+                      <option value="denied">Geweigerd</option>
+                    </select>
+                  </label>
 
-                <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                  <button onClick={submitAction} style={{ padding: '8px 12px' }}>Submit</button>
-                  <button onClick={closeModal} style={{ padding: '8px 12px' }}>Cancel</button>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 160px', gap: 12, marginTop: 12 }}>
+                    <label style={{ display: 'block' }}>
+                      Datum
+                      <input type="date" value={formDate} onChange={(e) => setFormDate(e.target.value)} style={{ display: 'block', marginTop: 6, width: '100%', padding: 12, borderRadius: 12, border: '1px solid #d1d5db' }} />
+                    </label>
+                    <label style={{ display: 'block' }}>
+                      Tijdslot
+                      <input value={formTime} onChange={(e) => setFormTime(e.target.value)} style={{ display: 'block', marginTop: 6, width: '100%', padding: 12, borderRadius: 12, border: '1px solid #d1d5db' }} />
+                    </label>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginTop: 12 }}>
+                    <label style={{ display: 'block' }}>
+                      Volwassenen
+                      <input type="number" min={1} value={formAdults} onChange={(e) => setFormAdults(Number(e.target.value || 1))} style={{ display: 'block', marginTop: 6, width: '100%', padding: 12, borderRadius: 12, border: '1px solid #d1d5db' }} />
+                    </label>
+                    <label style={{ display: 'block' }}>
+                      Kinderen
+                      <input type="number" min={0} value={formChildren} onChange={(e) => setFormChildren(Number(e.target.value || 0))} style={{ display: 'block', marginTop: 6, width: '100%', padding: 12, borderRadius: 12, border: '1px solid #d1d5db' }} />
+                    </label>
+                    <label style={{ display: 'block' }}>
+                      Pinguïns voeren
+                      <input type="number" min={0} value={formFeeding} onChange={(e) => setFormFeeding(Number(e.target.value || 0))} style={{ display: 'block', marginTop: 6, width: '100%', padding: 12, borderRadius: 12, border: '1px solid #d1d5db' }} />
+                    </label>
+                  </div>
+
+                  <label style={{ display: 'block', marginTop: 12 }}>
+                    Bericht (optioneel)
+                    <textarea value={formWorkerMessage} onChange={(e) => setFormWorkerMessage(e.target.value)} style={{ display: 'block', marginTop: 6, width: '100%', minHeight: 80, padding: 12, borderRadius: 12, border: '1px solid #d1d5db' }} />
+                  </label>
+
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12 }}>
+                    <input type="checkbox" checked={notifyVisitor} onChange={(e) => setNotifyVisitor(e.target.checked)} />
+                    Mail klant over wijziging
+                  </label>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 24 }}>
+                <button onClick={deleteActiveBooking} disabled={deletingModal || savingModal} style={{ padding: '12px 20px', borderRadius: 12, border: '1px solid #fecaca', color: '#dc2626', background: '#fee2e2' }}>{deletingModal ? 'Verwijderen…' : 'Verwijderen'}</button>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button onClick={saveModalEdits} disabled={savingModal || deletingModal} style={{ padding: '12px 22px', borderRadius: 12, border: 'none', background: '#111827', color: '#fff', fontWeight: 700 }}>
+                    {savingModal ? 'Opslaan…' : 'Opslaan'}
+                  </button>
                 </div>
               </div>
             </div>

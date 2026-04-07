@@ -149,6 +149,44 @@ export async function sendBookingDeniedEmail(
   }
 }
 
+// ── Visitor: booking updated by admin ─────────────────────────────────────────
+export async function sendBookingUpdatedEmail(booking: Booking): Promise<void> {
+  try {
+    const from = await getFrom()
+    const s = await getSettings()
+    const siteUrl = getSiteUrl((s as any).site_url)
+
+    const statusLabel =
+      booking.status === 'approved'
+        ? 'Geaccepteerd'
+        : booking.status === 'denied'
+          ? 'Geweigerd'
+          : 'Afwachtend'
+
+    await resend.emails.send({
+      from,
+      to: booking.visitor_email,
+      subject: `Je boeking is bijgewerkt – ${formatDate(booking.tour_date)} om ${booking.tour_time}`,
+      html: `
+        <div style="font-family:sans-serif;max-width:560px;margin:0 auto;color:#1a1a1a">
+          <h2 style="color:#2d6a4f">Je boeking werd aangepast</h2>
+          <p>Hoi ${booking.visitor_name}, er zijn wijzigingen doorgevoerd aan je boeking.</p>
+          <table style="width:100%;border-collapse:collapse;margin:24px 0">
+            <tr><td style="padding:8px 0;color:#666;width:160px">Datum</td><td style="padding:8px 0;font-weight:600">${formatDate(booking.tour_date)}</td></tr>
+            <tr><td style="padding:8px 0;color:#666">Tijdslot</td><td style="padding:8px 0;font-weight:600">${booking.tour_time}</td></tr>
+            <tr><td style="padding:8px 0;color:#666">Status</td><td style="padding:8px 0;font-weight:600">${statusLabel}</td></tr>
+            <tr><td style="padding:8px 0;color:#666">Personen</td><td style="padding:8px 0;font-weight:600">${booking.total_people} (${booking.children_count} kinderen)</td></tr>
+          </table>
+          ${booking.worker_message ? `<blockquote style="border-left:4px solid #2d6a4f;margin:0;padding:12px 16px;background:#f0fdf4;border-radius:0 8px 8px 0">${booking.worker_message}</blockquote>` : ''}
+          <a href="${siteUrl}/booking/${booking.edit_token}" style="display:inline-block;margin-top:24px;padding:12px 24px;background:#2d6a4f;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Bekijk boeking</a>
+        </div>
+      `,
+    })
+  } catch (err) {
+    console.error('[email] sendBookingUpdatedEmail failed', err)
+  }
+}
+
 // ── Worker: slot already taken ────────────────────────────────────────────────
 export async function sendSlotTakenEmail(
   worker: Worker,

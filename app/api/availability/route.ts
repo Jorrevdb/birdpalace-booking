@@ -5,6 +5,8 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { getSettings, getPlanningTabs } from '@/lib/settings'
 import { getAvailableSlotsForRange } from '@/lib/googleCalendar'
 
+const ACCEPTED_STATUSES = ['approved', 'accepted']
+
 /**
  * GET /api/availability?from=YYYY-MM-DD&to=YYYY-MM-DD
  *
@@ -54,6 +56,32 @@ export async function GET(req: NextRequest) {
   }
 
   const availability = await getAvailableSlotsForRange(from, to, defaultSlotsByDate)
+
+  // Final source-of-truth blocking: accepted bookings in DB should always make slot unavailable.
+  const { data: acceptedBookings, error: acceptedErr } = await supabaseAdmin
+    .from('bookings')
+    .select('tour_date,tour_time,status')
+    .gte('tour_date', from)
+    .lte('tour_date', to)
+    .in('status', ACCEPTED_STATUSES)
+
+  if (!acceptedErr && acceptedBookings && acceptedBookings.length > 0) {
+    const blockedByDate = new Map<string, Set<string>>()
+    for (const b of acceptedBookings as Array<{ tour_date: string; tour_time: string }>) {
+      const d = String(b.tour_date)
+      const t = String(b.tour_time)
+      if (!blockedByDate.has(d)) blockedByDate.set(d, new Set<string>())
+      blockedByDate.get(d)!.add(t)
+    }
+
+    for (const [date, slots] of Object.entries(availability)) {
+      const blocked = blockedByDate.get(date)
+      if (!blocked) continue
+      const filtered = slots.filter((s) => !blocked.has(s))
+      if (filtered.length > 0) availability[date] = filtered
+      else delete availability[date]
+    }
+  }
 
   return NextResponse.json({ availability })
 }

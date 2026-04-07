@@ -5,6 +5,8 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { getSettings, getPlanningTabs } from '@/lib/settings'
 import { explainAvailabilityForDate } from '@/lib/googleCalendar'
 
+const ACCEPTED_STATUSES = ['approved', 'accepted']
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const date = searchParams.get('date')
@@ -39,5 +41,20 @@ export async function GET(req: NextRequest) {
   const defaultSlots = dayCfg && dayCfg.enabled ? dayCfg.times : []
 
   const explain = await explainAvailabilityForDate(date, defaultSlots)
+
+  // Keep explain aligned with final availability endpoint: accepted bookings block slots.
+  const { data: acceptedBookings } = await supabaseAdmin
+    .from('bookings')
+    .select('tour_time,status')
+    .eq('tour_date', date)
+    .in('status', ACCEPTED_STATUSES)
+
+  const blockedByBookings = (acceptedBookings ?? []).map((b: any) => String(b.tour_time))
+  if (blockedByBookings.length > 0) {
+    explain.availableSlots = (explain.availableSlots ?? []).filter((s: string) => !blockedByBookings.includes(s))
+    const extraBlocks = blockedByBookings.map((time) => ({ time, reason: 'accepted_booking' }))
+    explain.blockedSlots = [...(explain.blockedSlots ?? []), ...extraBlocks]
+  }
+
   return NextResponse.json({ ok: true, explain })
 }

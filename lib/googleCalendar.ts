@@ -14,7 +14,7 @@
 
 import { google } from 'googleapis'
 import { supabaseAdmin } from './supabase'
-import { createOAuth2Client } from './googleOAuth'
+import { createOAuth2Client, getGoogleOAuthConfigStatus } from './googleOAuth'
 import {
   getSettings,
   parseTourTimes,
@@ -65,6 +65,12 @@ async function saveCalendarConnection(conn: GoogleCalendarConnection) {
 async function getCalendarClient() {
   const conn = await getCalendarConnection()
   if (!conn) return null
+
+  const cfg = getGoogleOAuthConfigStatus()
+  if (!cfg.configured) {
+    warnMissingOAuthConfigOnce('getCalendarClient')
+    return null
+  }
 
   const oauth2 = createOAuth2Client()
   oauth2.setCredentials({
@@ -143,11 +149,146 @@ function getSlotsForTabDate(tab: PlanningTab | null, dayOfWeek: number): string[
 
 // ── Public API ─────────────────────────────────────────────────────────────────
 
-/**
- * Returns available time slots for a given date.
- * Falls back to all configured slots when no calendar is connected.
- */
-export async function getAvailableSlotsForDate(date: string, defaultSlots?: string[]): Promise<string[]> {
+export type AvailabilityExplain = {
+  date: string
+  connected: boolean
+  defaultTab: { id: string; name: string } | null
+  activeTab: { id: string; name: string } | null
+  matchedKeyword: string | null
+  dayOfWeek: number
+  defaultSlots: string[]
+  baseSlots: string[]
+  availableSlots: string[]
+  blockedSlots: Array<{ time: string; reason: string }>
+  markerEventsCount: number
+  busyEventsCount: number
+  ignoredNonMarkerEventsCount?: number
+}
+
+const RANGE_CACHE_TTL_MS = 15_000
+const rangeCache = new Map<string, { ts: number; availability: Record<string, string[]> }>()
+let lastConfigWarnAt = 0
+
+function warnMissingOAuthConfigOnce(source: string) {
+  const now = Date.now()
+  if (now - lastConfigWarnAt < 60_000) return
+  lastConfigWarnAt = now
+  const status = getGoogleOAuthConfigStatus()
+  if (!status.configured) {
+    console.warn(`[googleCalendar] ${source}: Google OAuth disabled (missing env: ${status.missing.join(', ')})`)
+  }
+}
+
+function toYmdUTC(date: Date) {
+  return date.toISOString().slice(0, 10)
+}
+
+function parseSlotMinutes(slot: string): number | null {
+  const [h, m] = String(slot).split(':').map(Number)
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null
+  return h * 60 + m
+}
+
+function extractMinutesFromDateTime(raw?: string | null): number | null {
+  if (!raw) return null
+  const match = String(raw).match(/T(\d{2}):(\d{2})/)
+  if (!match) return null
+  return Number(match[1]) * 60 + Number(match[2])
+}
+
+function isMarkerEvent(ev: any, keywords: string[]) {
+  const summary = String(ev?.summary ?? '').toLowerCase()
+  return keywords.some((kw) => summary.includes(kw))
+}
+
+function filterSlotsByMarkerWindows(slots: string[], markerEvents: any[]) {
+  // If there are all-day marker events, keep full tab schedule.
+  const hasAllDayMarker = markerEvents.some((ev) => !!(ev?.start?.date && ev?.end?.date))
+  if (hasAllDayMarker) return slots
+
+  const windows = markerEvents
+    .map((ev) => ({
+      start: extractMinutesFromDateTime(ev?.start?.dateTime),
+      end: extractMinutesFromDateTime(ev?.end?.dateTime),
+    }))
+    .filter((w) => w.start !== null && w.end !== null && (w.end as number) > (w.start as number)) as Array<{ start: number; end: number }>
+
+  if (windows.length === 0) return slots
+
+  return slots.filter((slot) => {
+    const mins = parseSlotMinutes(slot)
+    if (mins === null) return false
+    return windows.some((w) => mins >= w.start && mins < w.end)
+  })
+}
+
+function computeDateAvailability(
+  date: string,
+  tabs: PlanningTab[],
+  allBaseSlots: string[],
+  eventsForDate: any[],
+  explicitDefaultSlots?: string[]
+) {
+  const [y0, m0, d0] = date.split('-').map(Number)
+  const dayOfWeek = new Date(Date.UTC(y0, m0 - 1, d0, 0, 0, 0)).getUTCDay()
+
+  const defaultTab = tabs[0] ?? null
+  const fallbackByDefaultTab = getSlotsForTabDate(defaultTab, dayOfWeek)
+  const defaultSlots = explicitDefaultSlots
+    ? [...explicitDefaultSlots]
+    : (fallbackByDefaultTab.length > 0 ? fallbackByDefaultTab : allBaseSlots)
+
+  const customTabs = tabs.slice(1).filter((t) => (t.keyword || '').trim().length > 0)
+  let activeTab: PlanningTab | null = defaultTab
+  let matchedKeyword: string | null = null
+
+  for (const tab of customTabs) {
+    const keyword = String(tab.keyword || '').toLowerCase()
+    const hit = eventsForDate.some((ev) => hasKeyword(ev.summary ?? '', keyword))
+    if (hit) {
+      activeTab = tab
+      matchedKeyword = keyword
+      break
+    }
+  }
+
+  const tabSlots = getSlotsForTabDate(activeTab, dayOfWeek)
+  const tabSwitched = !!(activeTab && defaultTab && activeTab.id !== defaultTab.id)
+  let baseSlots = tabSwitched ? tabSlots : defaultSlots
+
+  // If tab override is active and marker event is timed (e.g. 14:00-19:00), keep only slots in that window.
+  if (tabSwitched && matchedKeyword) {
+    const markerEventsForMatchedTab = eventsForDate.filter((ev) => hasKeyword(ev.summary ?? '', matchedKeyword!))
+    baseSlots = filterSlotsByMarkerWindows(baseSlots, markerEventsForMatchedTab)
+  }
+
+  // Requested behavior: ignore non-marker events for now.
+  const markerKeywords = customTabs.map((t) => String(t.keyword || '').toLowerCase()).filter(Boolean)
+  const markerEventsCount = eventsForDate.filter((ev) => isMarkerEvent(ev, markerKeywords)).length
+  const nonMarkerEventsCount = eventsForDate.length - markerEventsCount
+
+  const availableSlots = [...baseSlots]
+
+  const explain: AvailabilityExplain = {
+    date,
+    connected: true,
+    defaultTab: defaultTab ? { id: defaultTab.id, name: defaultTab.name } : null,
+    activeTab: activeTab ? { id: activeTab.id, name: activeTab.name } : null,
+    matchedKeyword,
+    dayOfWeek,
+    defaultSlots: [...defaultSlots],
+    baseSlots: [...baseSlots],
+    availableSlots: [...availableSlots],
+    blockedSlots: [],
+    markerEventsCount,
+    busyEventsCount: 0,
+    ignoredNonMarkerEventsCount: nonMarkerEventsCount,
+  }
+
+  return { slots: availableSlots, explain }
+}
+
+async function calculateAvailabilityForDate(date: string, defaultSlots?: string[]) {
   const ctx = await getCalendarClient()
 
   const settings = await getSettings()
@@ -156,8 +297,7 @@ export async function getAvailableSlotsForDate(date: string, defaultSlots?: stri
   const tabs = getPlanningTabs(settings)
 
   const [y0, m0, d0] = date.split('-').map(Number)
-  const dateForDOW = new Date(Date.UTC(y0, m0 - 1, d0, 0, 0, 0))
-  const dayOfWeek = dateForDOW.getUTCDay()
+  const dayOfWeek = new Date(Date.UTC(y0, m0 - 1, d0, 0, 0, 0)).getUTCDay()
 
   const defaultTab = tabs[0] ?? null
   const fallbackByDefaultTab = getSlotsForTabDate(defaultTab, dayOfWeek)
@@ -166,13 +306,28 @@ export async function getAvailableSlotsForDate(date: string, defaultSlots?: stri
     : (fallbackByDefaultTab.length > 0 ? fallbackByDefaultTab : allBaseSlots)
 
   if (!ctx) {
-    // No calendar connected → show defaults from schedule settings.
-    return [...allSlots]
+    return {
+      slots: [...allSlots],
+      explain: {
+        date,
+        connected: false,
+        defaultTab: defaultTab ? { id: defaultTab.id, name: defaultTab.name } : null,
+        activeTab: defaultTab ? { id: defaultTab.id, name: defaultTab.name } : null,
+        matchedKeyword: null,
+        dayOfWeek,
+        defaultSlots: [...allSlots],
+        baseSlots: [...allSlots],
+        availableSlots: [...allSlots],
+        blockedSlots: [],
+        markerEventsCount: 0,
+        busyEventsCount: 0,
+        ignoredNonMarkerEventsCount: 0,
+      } as AvailabilityExplain,
+    }
   }
 
   const { cal, conn } = ctx
   const [y, m, d] = date.split('-').map(Number)
-  // Query a slightly wider range to avoid timezone edge misses for all-day events.
   const queryMin = new Date(Date.UTC(y, m - 1, d - 1, 0, 0, 0))
   const queryMax = new Date(Date.UTC(y, m - 1, d + 2, 0, 0, 0))
 
@@ -188,49 +343,134 @@ export async function getAvailableSlotsForDate(date: string, defaultSlots?: stri
     events = res.data.items ?? []
   } catch (err) {
     console.error('[googleCalendar] events.list failed', err)
-    // On error, fall back to all slots rather than hiding everything
-    return [...allSlots]
-  }
-
-  const eventsForDate = events.filter((ev) => eventIntersectsDate(ev, date))
-
-  // Resolve active planning tab by first matching keyword in Google events.
-  const customTabs = tabs.slice(1).filter((t) => (t.keyword || '').trim().length > 0)
-  let activeTab: PlanningTab | null = defaultTab
-  for (const tab of customTabs) {
-    const hit = eventsForDate.some((ev) => hasKeyword(ev.summary ?? '', String(tab.keyword || '').toLowerCase()))
-    if (hit) {
-      activeTab = tab
-      break
+    return {
+      slots: [...allSlots],
+      explain: {
+        date,
+        connected: true,
+        defaultTab: defaultTab ? { id: defaultTab.id, name: defaultTab.name } : null,
+        activeTab: defaultTab ? { id: defaultTab.id, name: defaultTab.name } : null,
+        matchedKeyword: null,
+        dayOfWeek,
+        defaultSlots: [...allSlots],
+        baseSlots: [...allSlots],
+        availableSlots: [...allSlots],
+        blockedSlots: [],
+        markerEventsCount: 0,
+        busyEventsCount: 0,
+      } as AvailabilityExplain,
     }
   }
 
-  const tabSlots = getSlotsForTabDate(activeTab, dayOfWeek)
-  const tabSwitched = !!(activeTab && defaultTab && activeTab.id !== defaultTab.id)
-  const baseSlots = tabSwitched ? tabSlots : allSlots
+  const eventsForDate = events.filter((ev) => eventIntersectsDate(ev, date))
+  return computeDateAvailability(date, tabs, allBaseSlots, eventsForDate, allSlots)
+}
 
-  // Ignore marker events (tab keywords) when determining busy overlaps.
-  const keywords = customTabs.map((t) => String(t.keyword || '').toLowerCase()).filter(Boolean)
-  const busyEvents = eventsForDate.filter((ev) => {
-    const summary = (ev.summary ?? '').toLowerCase()
-    return !keywords.some((kw) => summary.includes(kw))
+/**
+ * Returns available time slots for a given date.
+ * Falls back to all configured slots when no calendar is connected.
+ */
+export async function getAvailableSlotsForDate(date: string, defaultSlots?: string[]): Promise<string[]> {
+  const result = await calculateAvailabilityForDate(date, defaultSlots)
+  return result.slots
+}
+
+export async function explainAvailabilityForDate(date: string, defaultSlots?: string[]): Promise<AvailabilityExplain> {
+  const result = await calculateAvailabilityForDate(date, defaultSlots)
+  return result.explain
+}
+
+export async function getAvailableSlotsForRange(
+  from: string,
+  to: string,
+  defaultSlotsByDate: Record<string, string[]>
+): Promise<Record<string, string[]>> {
+  const settings = await getSettings()
+  const tabs = getPlanningTabs(settings)
+  const allBaseSlots = Array.from(parseTourTimes(settings.tour_times))
+
+  const conn = await getCalendarConnection()
+  const cfg = getGoogleOAuthConfigStatus()
+  const settingsSig = JSON.stringify({
+    tabs: (settings as any).planning_tabs ?? null,
+    weekly_schedule: (settings as any).weekly_schedule ?? null,
+    tour_times: settings.tour_times,
   })
-
-  const available: string[] = []
-  for (const slot of baseSlots) {
-    const { start, end } = makeSlotRange(date, slot, duration)
-    const blocked = busyEvents.some((ev) =>
-      overlaps(
-        ev.start?.dateTime ?? ev.start?.date,
-        ev.end?.dateTime ?? ev.end?.date,
-        start,
-        end
-      )
-    )
-    if (!blocked) available.push(slot)
+  const cacheKey = `${conn?.calendar_id || 'no-conn'}|${from}|${to}|${settingsSig}`
+  const cached = rangeCache.get(cacheKey)
+  if (cached && Date.now() - cached.ts < RANGE_CACHE_TTL_MS) {
+    return cached.availability
   }
 
-  return available
+  const availability: Record<string, string[]> = {}
+
+  // No connected calendar or missing OAuth config: only default tab schedule.
+  if (!conn || !cfg.configured) {
+    if (!cfg.configured) warnMissingOAuthConfigOnce('getAvailableSlotsForRange')
+    for (const [date, slots] of Object.entries(defaultSlotsByDate)) {
+      if (slots.length > 0) availability[date] = [...slots]
+    }
+    rangeCache.set(cacheKey, { ts: Date.now(), availability })
+    return availability
+  }
+
+  const oauth2 = createOAuth2Client()
+  oauth2.setCredentials({
+    access_token: conn.access_token,
+    refresh_token: conn.refresh_token,
+    expiry_date: conn.expires_at ? new Date(conn.expires_at).getTime() : undefined,
+  })
+
+  oauth2.on('tokens', async (tokens) => {
+    const updated: GoogleCalendarConnection = {
+      ...conn,
+      access_token: tokens.access_token ?? conn.access_token,
+      expires_at: tokens.expiry_date ? new Date(tokens.expiry_date).toISOString() : conn.expires_at,
+    }
+    await saveCalendarConnection(updated)
+  })
+
+  const cal = google.calendar({ version: 'v3', auth: oauth2 })
+
+  const fromDt = new Date(`${from}T00:00:00Z`)
+  const toDt = new Date(`${to}T00:00:00Z`)
+  const queryMin = new Date(fromDt.getTime() - 24 * 60 * 60 * 1000)
+  const queryMax = new Date(toDt.getTime() + 2 * 24 * 60 * 60 * 1000)
+
+  let events: any[] = []
+  try {
+    const res = await cal.events.list({
+      calendarId: conn.calendar_id,
+      timeMin: queryMin.toISOString(),
+      timeMax: queryMax.toISOString(),
+      singleEvents: true,
+      orderBy: 'startTime',
+      maxResults: 2500,
+    })
+    events = res.data.items ?? []
+  } catch (err: any) {
+    const msg = err?.response?.data?.error_description || err?.response?.data?.error || err?.message || 'unknown_error'
+    console.warn(`[googleCalendar] events.list range failed: ${msg}`)
+    // On quota/rate failure fallback to defaults immediately.
+    for (const [date, slots] of Object.entries(defaultSlotsByDate)) {
+      if (slots.length > 0) availability[date] = [...slots]
+    }
+    rangeCache.set(cacheKey, { ts: Date.now(), availability })
+    return availability
+  }
+
+  const cursor = new Date(`${from}T00:00:00Z`)
+  while (cursor <= toDt) {
+    const date = toYmdUTC(cursor)
+    const explicitDefaultSlots = defaultSlotsByDate[date] ?? []
+    const eventsForDate = events.filter((ev) => eventIntersectsDate(ev, date))
+    const result = computeDateAvailability(date, tabs, allBaseSlots, eventsForDate, explicitDefaultSlots)
+    if (result.slots.length > 0) availability[date] = result.slots
+    cursor.setUTCDate(cursor.getUTCDate() + 1)
+  }
+
+  rangeCache.set(cacheKey, { ts: Date.now(), availability })
+  return availability
 }
 
 /**

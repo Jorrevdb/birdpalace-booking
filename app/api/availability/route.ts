@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { getSettings, getPlanningTabs } from '@/lib/settings'
-import { getAvailableSlotsForDate } from '@/lib/googleCalendar'
+import { getAvailableSlotsForRange } from '@/lib/googleCalendar'
 
 /**
  * GET /api/availability?from=YYYY-MM-DD&to=YYYY-MM-DD
@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
   const settings = await getSettings()
   const planningTabs = getPlanningTabs(settings)
   const defaultTab = planningTabs[0]
-  const availability: Record<string, string[]> = {}
+  const defaultSlotsByDate: Record<string, string[]> = {}
 
   const current = new Date(`${from}T00:00:00Z`)
   const end = new Date(`${to}T00:00:00Z`)
@@ -48,17 +48,12 @@ export async function GET(req: NextRequest) {
     const dateStr = current.toISOString().slice(0, 10)
 
     const dayCfg = defaultTab?.weekly_schedule?.[dayOfWeek]
-    const defaultSlots = dayCfg && dayCfg.enabled ? dayCfg.times : []
-
-    // Query Google Calendar for this date and merge with per-day defaults.
-    // This allows closed-by-default days to become open via override keyword.
-    const slots = await getAvailableSlotsForDate(dateStr, defaultSlots)
-    if (slots.length > 0) {
-      availability[dateStr] = slots
-    }
+    defaultSlotsByDate[dateStr] = dayCfg && dayCfg.enabled ? dayCfg.times : []
 
     current.setUTCDate(current.getUTCDate() + 1)
   }
+
+  const availability = await getAvailableSlotsForRange(from, to, defaultSlotsByDate)
 
   return NextResponse.json({ availability })
 }

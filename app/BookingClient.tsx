@@ -30,6 +30,8 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
   const [selectedMonth, setSelectedMonth] = useState(new Date())
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [availabilityExplain, setAvailabilityExplain] = useState<any | null>(null)
+  const [loadingExplain, setLoadingExplain] = useState(false)
   const [editToken, setEditToken] = useState('')
 
   const [form, setForm] = useState<BookingForm>({
@@ -134,6 +136,29 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
     setForm((f) => ({ ...f, tour_time: time }))
   }
 
+  useEffect(() => {
+    if (!form.tour_date) {
+      setAvailabilityExplain(null)
+      return
+    }
+
+    let cancelled = false
+    ;(async () => {
+      setLoadingExplain(true)
+      try {
+        const res = await fetch(`/api/availability/explain?date=${encodeURIComponent(form.tour_date)}`)
+        const data = await res.json()
+        if (!cancelled) setAvailabilityExplain(data.explain ?? null)
+      } catch (err) {
+        if (!cancelled) setAvailabilityExplain(null)
+      } finally {
+        if (!cancelled) setLoadingExplain(false)
+      }
+    })()
+
+    return () => { cancelled = true }
+  }, [form.tour_date])
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setSubmitting(true)
@@ -221,6 +246,30 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
                           {time}
                         </button>
                       ))}
+                    </div>
+
+                    <div className="mt-4 bg-gray-50 border border-gray-200 rounded-xl p-3 text-xs text-gray-700">
+                      <p className="font-semibold mb-1">Waarom is deze datum beschikbaar/niet beschikbaar?</p>
+                      {loadingExplain ? (
+                        <p>Logica laden…</p>
+                      ) : availabilityExplain ? (
+                        <ul className="list-disc pl-4 space-y-1">
+                          {availabilityExplain.reason === 'no_active_workers' ? (
+                            <li>Geen actieve medewerkers gevonden.</li>
+                          ) : (
+                            <>
+                              <li>Standaard tab: <strong>{availabilityExplain.defaultTab?.name ?? 'Default'}</strong></li>
+                              <li>Actieve tab voor deze datum: <strong>{availabilityExplain.activeTab?.name ?? 'Default'}</strong></li>
+                              <li>Keyword match: <strong>{availabilityExplain.matchedKeyword ?? 'geen'}</strong></li>
+                              <li>Start slots: <strong>{(availabilityExplain.baseSlots ?? []).join(', ') || 'geen'}</strong></li>
+                              <li>Beschikbaar: <strong>{(availabilityExplain.availableSlots ?? []).join(', ') || 'geen'}</strong></li>
+                              <li>Geblokkeerd door events: <strong>{(availabilityExplain.blockedSlots ?? []).length}</strong></li>
+                            </>
+                          )}
+                        </ul>
+                      ) : (
+                        <p>Geen debug-info beschikbaar.</p>
+                      )}
                     </div>
                   </div>
                 )}

@@ -1,13 +1,30 @@
 import crypto from 'crypto'
 import { google } from 'googleapis'
 
-const CLIENT_ID = process.env.GOOGLE_CLIENT_ID || ''
-const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || ''
-const REDIRECT_URI = (process.env.NEXT_PUBLIC_BASE_URL || '') + '/api/auth/google/callback'
+function getClientId() {
+  return process.env.GOOGLE_CLIENT_ID || ''
+}
+
+function getClientSecret() {
+  return process.env.GOOGLE_CLIENT_SECRET || ''
+}
+
+function getRedirectUri() {
+  return (process.env.NEXT_PUBLIC_BASE_URL || '') + '/api/auth/google/callback'
+}
+
 const HMAC_SECRET = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SECRET || ''
 
+export function getGoogleOAuthConfigStatus() {
+  const missing: string[] = []
+  if (!getClientId()) missing.push('GOOGLE_CLIENT_ID')
+  if (!getClientSecret()) missing.push('GOOGLE_CLIENT_SECRET')
+  if (!process.env.NEXT_PUBLIC_BASE_URL) missing.push('NEXT_PUBLIC_BASE_URL')
+  return { configured: missing.length === 0, missing }
+}
+
 export function createOAuth2Client() {
-  return new google.auth.OAuth2(CLIENT_ID, CLIENT_SECRET, REDIRECT_URI)
+  return new google.auth.OAuth2(getClientId(), getClientSecret(), getRedirectUri())
 }
 
 export function signState(payload: object) {

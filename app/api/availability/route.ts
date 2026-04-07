@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import { getSettings, parseTourTimes, parseWeeklySchedule } from '@/lib/settings'
+import { getSettings, getPlanningTabs } from '@/lib/settings'
 import { getAvailableSlotsForDate } from '@/lib/googleCalendar'
 
 /**
@@ -12,9 +12,9 @@ import { getAvailableSlotsForDate } from '@/lib/googleCalendar'
  *
  * Slot availability:
  *  - At least one active worker must exist.
- *  - Default slots come from weekly schedule settings (enable/disable per weekday + times).
- *  - Google Calendar events with override words can force a day open/closed.
- *  - Remaining Google Calendar events block overlapping slots.
+ *  - Default slots come from planning tab "Default" (weekly schedule).
+ *  - Google events can switch a date to another planning tab via keyword match.
+ *  - Remaining Google events block overlapping slots.
  */
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
@@ -36,8 +36,8 @@ export async function GET(req: NextRequest) {
   }
 
   const settings = await getSettings()
-  const allSlots = parseTourTimes(settings.tour_times)
-  const weeklySchedule = parseWeeklySchedule(settings.weekly_schedule, Array.from(allSlots))
+  const planningTabs = getPlanningTabs(settings)
+  const defaultTab = planningTabs[0]
   const availability: Record<string, string[]> = {}
 
   const current = new Date(from)
@@ -47,8 +47,8 @@ export async function GET(req: NextRequest) {
     const dayOfWeek = current.getDay() // 0=Sun, 1=Mon, 6=Sat
     const dateStr = current.toISOString().slice(0, 10)
 
-    const dayCfg = weeklySchedule[dayOfWeek] ?? { enabled: true, times: Array.from(allSlots) }
-    const defaultSlots = dayCfg.enabled ? dayCfg.times : []
+    const dayCfg = defaultTab?.weekly_schedule?.[dayOfWeek]
+    const defaultSlots = dayCfg && dayCfg.enabled ? dayCfg.times : []
 
     // Query Google Calendar for this date and merge with per-day defaults.
     // This allows closed-by-default days to become open via override keyword.

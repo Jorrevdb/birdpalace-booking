@@ -19,8 +19,8 @@ import {
   getSettings,
   parseTourTimes,
   getTourDuration,
-  getCalendarOpenKeyword,
-  getCalendarClosedKeyword,
+  getPlanningTabs,
+  type PlanningTab,
 } from './settings'
 import type { Booking } from '@/types'
 
@@ -115,6 +115,13 @@ function hasKeyword(summary: string | undefined, keyword: string) {
   return summary.toLowerCase().includes(keyword)
 }
 
+function getSlotsForTabDate(tab: PlanningTab | null, dayOfWeek: number): string[] {
+  if (!tab) return []
+  const cfg = tab.weekly_schedule?.[dayOfWeek]
+  if (!cfg || !cfg.enabled) return []
+  return Array.from(cfg.times || [])
+}
+
 // ── Public API ─────────────────────────────────────────────────────────────────
 
 /**
@@ -125,13 +132,19 @@ export async function getAvailableSlotsForDate(date: string, defaultSlots?: stri
   const ctx = await getCalendarClient()
 
   const settings = await getSettings()
-  const allSlots = defaultSlots && defaultSlots.length > 0
-    ? [...defaultSlots]
-    : Array.from(parseTourTimes(settings.tour_times))
-  const fallbackAllSlots = Array.from(parseTourTimes(settings.tour_times))
+  const allBaseSlots = Array.from(parseTourTimes(settings.tour_times))
   const duration = getTourDuration(settings.tour_duration_minutes)
-  const openKeyword = getCalendarOpenKeyword(settings.calendar_override_open_keyword)
-  const closedKeyword = getCalendarClosedKeyword(settings.calendar_override_closed_keyword)
+  const tabs = getPlanningTabs(settings)
+
+  const [y0, m0, d0] = date.split('-').map(Number)
+  const dateForDOW = new Date(y0, m0 - 1, d0)
+  const dayOfWeek = dateForDOW.getDay()
+
+  const defaultTab = tabs[0] ?? null
+  const fallbackByDefaultTab = getSlotsForTabDate(defaultTab, dayOfWeek)
+  const allSlots = defaultSlots
+    ? [...defaultSlots]
+    : (fallbackByDefaultTab.length > 0 ? fallbackByDefaultTab : allBaseSlots)
 
   if (!ctx) {
     // No calendar connected → show defaults from schedule settings.
@@ -159,19 +172,27 @@ export async function getAvailableSlotsForDate(date: string, defaultSlots?: stri
     return [...allSlots]
   }
 
-  const forceClosed = events.some((ev) => hasKeyword(ev.summary ?? '', closedKeyword))
-  const forceOpen = events.some((ev) => hasKeyword(ev.summary ?? '', openKeyword))
+  // Resolve active planning tab by first matching keyword in Google events.
+  const customTabs = tabs.slice(1).filter((t) => (t.keyword || '').trim().length > 0)
+  let activeTab: PlanningTab | null = defaultTab
+  for (const tab of customTabs) {
+    const hit = events.some((ev) => hasKeyword(ev.summary ?? '', String(tab.keyword || '').toLowerCase()))
+    if (hit) {
+      activeTab = tab
+      break
+    }
+  }
 
-  // Closed override always wins if both words accidentally exist on the same date.
-  if (forceClosed) return []
+  const tabSlots = getSlotsForTabDate(activeTab, dayOfWeek)
+  const baseSlots = defaultSlots
+    ? [...defaultSlots]
+    : (tabSlots.length > 0 ? tabSlots : allSlots)
 
-  // Open override can open a normally-closed day (no default slots).
-  const baseSlots = allSlots.length > 0 ? allSlots : (forceOpen ? fallbackAllSlots : [])
-
-  // Ignore marker events when determining busy overlaps.
+  // Ignore marker events (tab keywords) when determining busy overlaps.
+  const keywords = customTabs.map((t) => String(t.keyword || '').toLowerCase()).filter(Boolean)
   const busyEvents = events.filter((ev) => {
     const summary = (ev.summary ?? '').toLowerCase()
-    return !summary.includes(openKeyword) && !summary.includes(closedKeyword)
+    return !keywords.some((kw) => summary.includes(kw))
   })
 
   const available: string[] = []

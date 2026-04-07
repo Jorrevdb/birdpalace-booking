@@ -489,17 +489,8 @@ function CalendarPanel({ password }: { password: string }) {
   const [message, setMessage] = useState('')
   const [allSettings, setAllSettings] = useState<any>({})
   const [savingRules, setSavingRules] = useState(false)
-  const [openKeyword, setOpenKeyword] = useState('open')
-  const [closedKeyword, setClosedKeyword] = useState('gesloten')
-  const [weeklySchedule, setWeeklySchedule] = useState<Record<number, { enabled: boolean; times: string }>>({
-    0: { enabled: true, times: '11:00,13:00,15:00' },
-    1: { enabled: false, times: '11:00,13:00,15:00' },
-    2: { enabled: true, times: '11:00,13:00,15:00' },
-    3: { enabled: true, times: '11:00,13:00,15:00' },
-    4: { enabled: true, times: '11:00,13:00,15:00' },
-    5: { enabled: true, times: '11:00,13:00,15:00' },
-    6: { enabled: true, times: '11:00,13:00,15:00' },
-  })
+  const [tabs, setTabs] = useState<Array<{ id: string; name: string; keyword: string; weekly_schedule: Record<number, { enabled: boolean; times: string }> }>>([])
+  const [activeTabId, setActiveTabId] = useState('default')
 
   const dayLabels = ['Zondag', 'Maandag', 'Dinsdag', 'Woensdag', 'Donderdag', 'Vrijdag', 'Zaterdag']
 
@@ -513,6 +504,21 @@ function CalendarPanel({ password }: { password: string }) {
       5: { enabled: true, times: baseTimes },
       6: { enabled: true, times: baseTimes },
     }
+  }
+
+  function makeDefaultTabs(baseTimes: string) {
+    const defaultSchedule = buildDefaultSchedule(baseTimes)
+    const openSchedule = buildDefaultSchedule(baseTimes)
+    const closedSchedule = buildDefaultSchedule(baseTimes)
+    for (let d = 0; d <= 6; d++) {
+      openSchedule[d] = { enabled: true, times: baseTimes }
+      closedSchedule[d] = { enabled: false, times: '' }
+    }
+    return [
+      { id: 'default', name: 'Default', keyword: '', weekly_schedule: defaultSchedule },
+      { id: 'open', name: 'Open', keyword: 'open', weekly_schedule: openSchedule },
+      { id: 'gesloten', name: 'Gesloten', keyword: 'gesloten', weekly_schedule: closedSchedule },
+    ]
   }
 
   async function fetchStatus() {
@@ -541,24 +547,42 @@ function CalendarPanel({ password }: { password: string }) {
         ? s.tour_times.join(',')
         : (s.tour_times || '11:00,13:00,15:00')
 
-      const defaults = buildDefaultSchedule(baseTimes)
-      const rawWeekly = s.weekly_schedule ?? {}
-      const nextWeekly: Record<number, { enabled: boolean; times: string }> = { ...defaults }
+      const defaults = makeDefaultTabs(baseTimes)
+      const incoming = Array.isArray(s.planning_tabs) && s.planning_tabs.length > 0
+        ? s.planning_tabs
+        : defaults
 
-      for (let d = 0; d <= 6; d++) {
-        const cfg = rawWeekly[String(d)] ?? rawWeekly[d]
-        if (!cfg) continue
-        nextWeekly[d] = {
-          enabled: typeof cfg.enabled === 'boolean' ? cfg.enabled : defaults[d].enabled,
-          times: Array.isArray(cfg.times)
-            ? cfg.times.join(',')
-            : String(cfg.times ?? defaults[d].times),
+      const normalized = incoming.map((tab: any, index: number) => {
+        const base = index === 0 ? defaults[0] : {
+          id: String(tab?.id || `tab-${index + 1}`),
+          name: String(tab?.name || `Tab ${index + 1}`),
+          keyword: String(tab?.keyword || '').toLowerCase(),
+          weekly_schedule: buildDefaultSchedule(baseTimes),
         }
-      }
 
-      setWeeklySchedule(nextWeekly)
-      setOpenKeyword(s.calendar_override_open_keyword || 'open')
-      setClosedKeyword(s.calendar_override_closed_keyword || 'gesloten')
+        const weekly = { ...base.weekly_schedule }
+        const rawWeekly = tab?.weekly_schedule || {}
+        for (let d = 0; d <= 6; d++) {
+          const cfg = rawWeekly[String(d)] ?? rawWeekly[d]
+          if (!cfg) continue
+          weekly[d] = {
+            enabled: typeof cfg.enabled === 'boolean' ? cfg.enabled : weekly[d].enabled,
+            times: Array.isArray(cfg.times)
+              ? cfg.times.join(',')
+              : String(cfg.times ?? weekly[d].times),
+          }
+        }
+
+        return {
+          id: String(index === 0 ? 'default' : (tab?.id || base.id)),
+          name: String(index === 0 ? 'Default' : (tab?.name || base.name)),
+          keyword: String(index === 0 ? '' : (tab?.keyword || base.keyword || '')).toLowerCase(),
+          weekly_schedule: weekly,
+        }
+      })
+
+      setTabs(normalized)
+      setActiveTabId(normalized[0]?.id || 'default')
     } catch (err: any) {
       setMessage(err.message || 'Kon kalenderregels niet ophalen')
     }
@@ -624,23 +648,29 @@ function CalendarPanel({ password }: { password: string }) {
     setSavingRules(true)
     setMessage('')
     try {
-      const normalizedWeekly: Record<number, { enabled: boolean; times: string[] }> = {} as any
-      for (let d = 0; d <= 6; d++) {
-        const row = weeklySchedule[d]
-        normalizedWeekly[d] = {
-          enabled: !!row.enabled,
-          times: String(row.times || '')
-            .split(',')
-            .map((s) => s.trim())
-            .filter(Boolean),
+      const normalizedTabs = tabs.map((tab, index) => {
+        const weekly: Record<number, { enabled: boolean; times: string[] }> = {} as any
+        for (let d = 0; d <= 6; d++) {
+          const row = tab.weekly_schedule[d]
+          weekly[d] = {
+            enabled: !!row?.enabled,
+            times: String(row?.times || '')
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean),
+          }
         }
-      }
+        return {
+          id: index === 0 ? 'default' : (tab.id || `tab-${index + 1}`),
+          name: index === 0 ? 'Default' : tab.name,
+          keyword: index === 0 ? '' : String(tab.keyword || '').trim().toLowerCase(),
+          weekly_schedule: weekly,
+        }
+      })
 
       const payload = {
         ...allSettings,
-        weekly_schedule: normalizedWeekly,
-        calendar_override_open_keyword: openKeyword.trim() || 'open',
-        calendar_override_closed_keyword: closedKeyword.trim() || 'gesloten',
+        planning_tabs: normalizedTabs,
       }
 
       const res = await fetch('/api/admin/settings', {
@@ -660,6 +690,49 @@ function CalendarPanel({ password }: { password: string }) {
     } finally {
       setSavingRules(false)
     }
+  }
+
+  const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0]
+
+  function updateActiveTab(patch: Partial<{ name: string; keyword: string }>) {
+    if (!activeTab) return
+    setTabs((prev) => prev.map((t) => t.id === activeTab.id ? { ...t, ...patch } : t))
+  }
+
+  function updateActiveDay(dayIndex: number, patch: Partial<{ enabled: boolean; times: string }>) {
+    if (!activeTab) return
+    setTabs((prev) => prev.map((t) => {
+      if (t.id !== activeTab.id) return t
+      return {
+        ...t,
+        weekly_schedule: {
+          ...t.weekly_schedule,
+          [dayIndex]: {
+            ...t.weekly_schedule[dayIndex],
+            ...patch,
+          },
+        },
+      }
+    }))
+  }
+
+  function addTab() {
+    const id = `tab-${Date.now()}`
+    const baseTimes = tabs[0]?.weekly_schedule?.[0]?.times || '11:00,13:00,15:00'
+    const newTab = {
+      id,
+      name: `Tab ${tabs.length + 1}`,
+      keyword: '',
+      weekly_schedule: buildDefaultSchedule(baseTimes),
+    }
+    setTabs((prev) => [...prev, newTab])
+    setActiveTabId(id)
+  }
+
+  function removeActiveTab() {
+    if (!activeTab || activeTab.id === 'default') return
+    setTabs((prev) => prev.filter((t) => t.id !== activeTab.id))
+    setActiveTabId('default')
   }
 
   if (loading) return <p>Laden…</p>
@@ -710,67 +783,94 @@ function CalendarPanel({ password }: { password: string }) {
       <div style={{ marginTop: 24, padding: 16, background: '#f9fafb', borderRadius: 8, fontSize: 13, color: '#6b7280' }}>
         <strong style={{ color: '#374151' }}>Hoe werkt het?</strong>
         <ul style={{ marginTop: 8, paddingLeft: 20, lineHeight: 1.7 }}>
-          <li>Stel hieronder per weekdag in of boekingen openstaan en welke uren standaard zichtbaar zijn.</li>
-          <li>Maak in Google Calendar een event met het woord <strong>{openKeyword || 'open'}</strong> om die specifieke datum open te forceren.</li>
-          <li>Maak een event met <strong>{closedKeyword || 'gesloten'}</strong> om die datum te sluiten, zelfs als de weekdag standaard open is.</li>
-          <li>Andere events in Google blokkeren overlappende tijdslots automatisch.</li>
+          <li><strong>Default</strong> bepaalt wat de website standaard toont.</li>
+          <li>Maak extra tabs met een keyword (bv. <em>open</em> of <em>gesloten</em>).</li>
+          <li>Als een Google-event op die datum het keyword bevat, gebruikt de site die tab-planning voor die datum.</li>
+          <li>Andere Google-events blokkeren overlappende tijdslots automatisch.</li>
         </ul>
       </div>
 
       <div style={{ marginTop: 24, padding: 16, background: '#ffffff', border: '1px solid #e5e7eb', borderRadius: 8 }}>
-        <h3 style={{ marginTop: 0 }}>Standaard weekplanning</h3>
+        <h3 style={{ marginTop: 0 }}>Weekplanning tabs</h3>
         <p style={{ marginTop: 0, color: '#6b7280', fontSize: 13 }}>
-          Deze planning geldt standaard. Met Google-events op datum-niveau kan je uitzonderingen maken.
+          Tab 1 is altijd <strong>Default</strong>. Extra tabs koppel je aan Google event-keywords.
         </p>
 
-        <div style={{ display: 'grid', gap: 10 }}>
-          {dayLabels.map((label, dayIndex) => (
-            <div key={dayIndex} style={{ display: 'grid', gridTemplateColumns: '140px 120px 1fr', gap: 10, alignItems: 'center' }}>
-              <div style={{ fontWeight: 600 }}>{label}</div>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <input
-                  type="checkbox"
-                  checked={!!weeklySchedule[dayIndex]?.enabled}
-                  onChange={(e) => setWeeklySchedule((prev) => ({
-                    ...prev,
-                    [dayIndex]: { ...prev[dayIndex], enabled: e.target.checked },
-                  }))}
-                />
-                Open
-              </label>
-              <input
-                value={weeklySchedule[dayIndex]?.times ?? ''}
-                onChange={(e) => setWeeklySchedule((prev) => ({
-                  ...prev,
-                  [dayIndex]: { ...prev[dayIndex], times: e.target.value },
-                }))}
-                placeholder="11:00,13:00,15:00"
-                style={{ width: '100%' }}
-              />
-            </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 16 }}>
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTabId(tab.id)}
+              style={{
+                padding: '8px 12px',
+                borderRadius: 8,
+                border: '1px solid #d1d5db',
+                background: activeTabId === tab.id ? '#f3f4f6' : '#fff',
+                fontWeight: 600,
+              }}
+            >
+              {tab.name}
+            </button>
           ))}
+          <button onClick={addTab} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', background: '#fff' }}>+</button>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 16 }}>
-          <label style={{ display: 'block' }}>
-            Keyword voor open override
-            <input
-              value={openKeyword}
-              onChange={(e) => setOpenKeyword(e.target.value)}
-              style={{ display: 'block', marginTop: 6, width: '100%' }}
-              placeholder="open"
-            />
-          </label>
-          <label style={{ display: 'block' }}>
-            Keyword voor gesloten override
-            <input
-              value={closedKeyword}
-              onChange={(e) => setClosedKeyword(e.target.value)}
-              style={{ display: 'block', marginTop: 6, width: '100%' }}
-              placeholder="gesloten"
-            />
-          </label>
-        </div>
+        {activeTab && (
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 12, marginBottom: 16 }}>
+              <label style={{ display: 'block' }}>
+                Tab naam
+                <input
+                  value={activeTab.name}
+                  disabled={activeTab.id === 'default'}
+                  onChange={(e) => updateActiveTab({ name: e.target.value })}
+                  style={{ display: 'block', marginTop: 6, width: '100%' }}
+                />
+              </label>
+              <label style={{ display: 'block' }}>
+                Google keyword
+                <input
+                  value={activeTab.keyword}
+                  disabled={activeTab.id === 'default'}
+                  onChange={(e) => updateActiveTab({ keyword: e.target.value.toLowerCase() })}
+                  style={{ display: 'block', marginTop: 6, width: '100%' }}
+                  placeholder={activeTab.id === 'default' ? 'Niet van toepassing' : 'bijv. open'}
+                />
+              </label>
+              <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+                <button
+                  onClick={removeActiveTab}
+                  disabled={activeTab.id === 'default'}
+                  style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #d1d5db', background: activeTab.id === 'default' ? '#f3f4f6' : '#fff' }}
+                >
+                  Verwijder tab
+                </button>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gap: 10 }}>
+              {dayLabels.map((label, dayIndex) => (
+                <div key={dayIndex} style={{ display: 'grid', gridTemplateColumns: '140px 120px 1fr', gap: 10, alignItems: 'center' }}>
+                  <div style={{ fontWeight: 600 }}>{label}</div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <input
+                      type="checkbox"
+                      checked={!!activeTab.weekly_schedule?.[dayIndex]?.enabled}
+                      onChange={(e) => updateActiveDay(dayIndex, { enabled: e.target.checked })}
+                    />
+                    Open
+                  </label>
+                  <input
+                    value={activeTab.weekly_schedule?.[dayIndex]?.times ?? ''}
+                    onChange={(e) => updateActiveDay(dayIndex, { times: e.target.value })}
+                    placeholder="11:00,13:00,15:00"
+                    style={{ width: '100%' }}
+                  />
+                </div>
+              ))}
+            </div>
+          </>
+        )}
 
         <div style={{ marginTop: 14 }}>
           <button

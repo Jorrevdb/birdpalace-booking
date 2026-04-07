@@ -12,6 +12,7 @@ export type Settings = {
   weekly_schedule?: any
   calendar_override_open_keyword?: string
   calendar_override_closed_keyword?: string
+  planning_tabs?: any
 }
 
 export type WeeklyDayConfig = {
@@ -20,6 +21,13 @@ export type WeeklyDayConfig = {
 }
 
 export type WeeklySchedule = Record<number, WeeklyDayConfig>
+
+export type PlanningTab = {
+  id: string
+  name: string
+  keyword?: string
+  weekly_schedule: WeeklySchedule
+}
 
 export async function getSettings(): Promise<Settings> {
   // Critical: prevent Next.js Server Component fetch caching from serving stale settings on reload.
@@ -109,6 +117,58 @@ export function getCalendarOpenKeyword(raw?: string) {
 
 export function getCalendarClosedKeyword(raw?: string) {
   return (raw || 'gesloten').trim().toLowerCase()
+}
+
+function slugify(value: string) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9-_]/g, '')
+    .slice(0, 40) || 'tab'
+}
+
+export function getPlanningTabs(settings: Settings): PlanningTab[] {
+  const baseSlots = Array.from(parseTourTimes(settings.tour_times))
+
+  // New schema (preferred)
+  if (Array.isArray(settings.planning_tabs) && settings.planning_tabs.length > 0) {
+    const normalized = settings.planning_tabs.map((raw: any, i: number) => {
+      const name = String(raw?.name || (i === 0 ? 'Default' : `Tab ${i + 1}`))
+      return {
+        id: String(raw?.id || slugify(name) || `tab-${i + 1}`),
+        name,
+        keyword: raw?.keyword ? String(raw.keyword).trim().toLowerCase() : '',
+        weekly_schedule: parseWeeklySchedule(raw?.weekly_schedule, baseSlots),
+      } as PlanningTab
+    })
+
+    // Ensure first tab is default-like (no keyword)
+    if (normalized.length > 0) {
+      normalized[0].id = normalized[0].id || 'default'
+      normalized[0].name = normalized[0].name || 'Default'
+      normalized[0].keyword = ''
+    }
+    return normalized
+  }
+
+  // Backward compatibility from old schema.
+  const defaultSchedule = parseWeeklySchedule(settings.weekly_schedule, baseSlots)
+  const openKeyword = getCalendarOpenKeyword(settings.calendar_override_open_keyword)
+  const closedKeyword = getCalendarClosedKeyword(settings.calendar_override_closed_keyword)
+
+  const fullyOpen = getDefaultWeeklySchedule(baseSlots)
+  const fullyClosed = getDefaultWeeklySchedule(baseSlots)
+  for (let d = 0; d <= 6; d++) {
+    fullyOpen[d] = { enabled: true, times: [...baseSlots] }
+    fullyClosed[d] = { enabled: false, times: [] }
+  }
+
+  return [
+    { id: 'default', name: 'Default', keyword: '', weekly_schedule: defaultSchedule },
+    { id: 'open', name: 'Open', keyword: openKeyword, weekly_schedule: fullyOpen },
+    { id: 'gesloten', name: 'Gesloten', keyword: closedKeyword, weekly_schedule: fullyClosed },
+  ]
 }
 
 export function getTourDuration(raw?: number) {

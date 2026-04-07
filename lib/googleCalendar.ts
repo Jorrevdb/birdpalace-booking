@@ -115,6 +115,25 @@ function hasKeyword(summary: string | undefined, keyword: string) {
   return summary.toLowerCase().includes(keyword)
 }
 
+function eventIntersectsDate(ev: any, date: string) {
+  const startDate = ev?.start?.date
+  const endDate = ev?.end?.date
+
+  // All-day event: Google uses [start.date, end.date) (end is exclusive)
+  if (startDate && endDate) {
+    return startDate <= date && date < endDate
+  }
+
+  const s = ev?.start?.dateTime ?? ev?.start?.date
+  const e = ev?.end?.dateTime ?? ev?.end?.date
+  if (!s || !e) return false
+
+  const sDate = new Date(s).toISOString().slice(0, 10)
+  // subtract 1ms because end is exclusive in calendar semantics
+  const eDate = new Date(new Date(e).getTime() - 1).toISOString().slice(0, 10)
+  return sDate <= date && date <= eDate
+}
+
 function getSlotsForTabDate(tab: PlanningTab | null, dayOfWeek: number): string[] {
   if (!tab) return []
   const cfg = tab.weekly_schedule?.[dayOfWeek]
@@ -137,8 +156,8 @@ export async function getAvailableSlotsForDate(date: string, defaultSlots?: stri
   const tabs = getPlanningTabs(settings)
 
   const [y0, m0, d0] = date.split('-').map(Number)
-  const dateForDOW = new Date(y0, m0 - 1, d0)
-  const dayOfWeek = dateForDOW.getDay()
+  const dateForDOW = new Date(Date.UTC(y0, m0 - 1, d0, 0, 0, 0))
+  const dayOfWeek = dateForDOW.getUTCDay()
 
   const defaultTab = tabs[0] ?? null
   const fallbackByDefaultTab = getSlotsForTabDate(defaultTab, dayOfWeek)
@@ -153,15 +172,16 @@ export async function getAvailableSlotsForDate(date: string, defaultSlots?: stri
 
   const { cal, conn } = ctx
   const [y, m, d] = date.split('-').map(Number)
-  const dayStart = new Date(y, m - 1, d, 0, 0, 0)
-  const dayEnd = new Date(y, m - 1, d, 23, 59, 59)
+  // Query a slightly wider range to avoid timezone edge misses for all-day events.
+  const queryMin = new Date(Date.UTC(y, m - 1, d - 1, 0, 0, 0))
+  const queryMax = new Date(Date.UTC(y, m - 1, d + 2, 0, 0, 0))
 
   let events: any[] = []
   try {
     const res = await cal.events.list({
       calendarId: conn.calendar_id,
-      timeMin: dayStart.toISOString(),
-      timeMax: dayEnd.toISOString(),
+      timeMin: queryMin.toISOString(),
+      timeMax: queryMax.toISOString(),
       singleEvents: true,
       orderBy: 'startTime',
     })
@@ -172,11 +192,13 @@ export async function getAvailableSlotsForDate(date: string, defaultSlots?: stri
     return [...allSlots]
   }
 
+  const eventsForDate = events.filter((ev) => eventIntersectsDate(ev, date))
+
   // Resolve active planning tab by first matching keyword in Google events.
   const customTabs = tabs.slice(1).filter((t) => (t.keyword || '').trim().length > 0)
   let activeTab: PlanningTab | null = defaultTab
   for (const tab of customTabs) {
-    const hit = events.some((ev) => hasKeyword(ev.summary ?? '', String(tab.keyword || '').toLowerCase()))
+    const hit = eventsForDate.some((ev) => hasKeyword(ev.summary ?? '', String(tab.keyword || '').toLowerCase()))
     if (hit) {
       activeTab = tab
       break
@@ -184,13 +206,12 @@ export async function getAvailableSlotsForDate(date: string, defaultSlots?: stri
   }
 
   const tabSlots = getSlotsForTabDate(activeTab, dayOfWeek)
-  const baseSlots = defaultSlots
-    ? [...defaultSlots]
-    : (tabSlots.length > 0 ? tabSlots : allSlots)
+  const tabSwitched = !!(activeTab && defaultTab && activeTab.id !== defaultTab.id)
+  const baseSlots = tabSwitched ? tabSlots : allSlots
 
   // Ignore marker events (tab keywords) when determining busy overlaps.
   const keywords = customTabs.map((t) => String(t.keyword || '').toLowerCase()).filter(Boolean)
-  const busyEvents = events.filter((ev) => {
+  const busyEvents = eventsForDate.filter((ev) => {
     const summary = (ev.summary ?? '').toLowerCase()
     return !keywords.some((kw) => summary.includes(kw))
   })

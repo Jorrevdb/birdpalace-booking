@@ -40,11 +40,11 @@ export async function GET(req: NextRequest) {
   const defaultTab = planningTabs[0]
   const availability: Record<string, string[]> = {}
 
-  const current = new Date(from)
-  const end = new Date(to)
+  const current = new Date(`${from}T00:00:00Z`)
+  const end = new Date(`${to}T00:00:00Z`)
 
   while (current <= end) {
-    const dayOfWeek = current.getDay() // 0=Sun, 1=Mon, 6=Sat
+    const dayOfWeek = current.getUTCDay() // 0=Sun, 1=Mon, 6=Sat
     const dateStr = current.toISOString().slice(0, 10)
 
     const dayCfg = defaultTab?.weekly_schedule?.[dayOfWeek]
@@ -57,7 +57,7 @@ export async function GET(req: NextRequest) {
       availability[dateStr] = slots
     }
 
-    current.setDate(current.getDate() + 1)
+    current.setUTCDate(current.getUTCDate() + 1)
   }
 
   return NextResponse.json({ availability })

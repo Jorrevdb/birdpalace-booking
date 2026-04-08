@@ -2,6 +2,7 @@
 
 import { useSearchParams } from 'next/navigation'
 import { useState, useEffect, Suspense } from 'react'
+import type { Settings } from '@/lib/settings'
 
 function WorkerRespondInner({ token }: { token: string }) {
   const searchParams = useSearchParams()
@@ -10,6 +11,23 @@ function WorkerRespondInner({ token }: { token: string }) {
   const [status, setStatus] = useState<'loading' | 'success' | 'error' | 'idle'>('idle')
   const [message, setMessage] = useState('')
   const [result, setResult] = useState<string>('')
+  const [settings, setSettings] = useState<Settings | null>(null)
+
+  useEffect(() => {
+    // Fetch settings to get default messages
+    async function fetchSettings() {
+      try {
+        const res = await fetch('/api/settings')
+        if (res.ok) {
+          const data = await res.json()
+          setSettings(data.settings ?? {})
+        }
+      } catch (err) {
+        console.error('Failed to fetch settings', err)
+      }
+    }
+    fetchSettings()
+  }, [])
 
   useEffect(() => {
     // Auto-submit if action is in the URL (from email link)
@@ -21,11 +39,22 @@ function WorkerRespondInner({ token }: { token: string }) {
 
   async function handleRespond(selectedAction: 'accept' | 'decline') {
     setStatus('loading')
+    
+    // Use default message if empty
+    let finalMessage = message
+    if (!finalMessage) {
+      if (selectedAction === 'accept' && settings?.worker_message_accepted_default) {
+        finalMessage = settings.worker_message_accepted_default
+      } else if (selectedAction === 'decline' && settings?.worker_message_denied_default) {
+        finalMessage = settings.worker_message_denied_default
+      }
+    }
+    
     try {
       const res = await fetch(`/api/worker/respond/${token}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: selectedAction, message }),
+        body: JSON.stringify({ action: selectedAction, message: finalMessage }),
       })
       const data = await res.json()
 
@@ -85,10 +114,14 @@ function WorkerRespondInner({ token }: { token: string }) {
         <label className="block text-sm font-medium text-gray-700 mb-1.5">
           Bericht (optioneel)
         </label>
+        <p className="text-xs text-gray-500 mb-2">
+          Accepteren: <em>{settings?.worker_message_accepted_default || 'Alles in orde. Tot ziens!'}</em> | 
+          Weigeren: <em>{settings?.worker_message_denied_default || 'Helaas kan ik niet beschikbaar zijn.'}</em>
+        </p>
         <textarea
           className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-brand-500 text-gray-900 placeholder:text-gray-400 resize-none"
           rows={3}
-          placeholder="Voeg een bericht toe voor de bezoeker..."
+          placeholder="Voeg een bericht toe voor de bezoeker (optioneel, anders wordt standaard bericht gebruikt)..."
           value={message}
           onChange={(e) => setMessage(e.target.value)}
         />

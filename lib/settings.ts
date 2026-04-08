@@ -13,6 +13,8 @@ export type Settings = {
   calendar_override_open_keyword?: string
   calendar_override_closed_keyword?: string
   planning_tabs?: any
+  worker_message_accepted_default?: string
+  worker_message_denied_default?: string
 }
 
 export type WeeklyDayConfig = {
@@ -186,4 +188,11 @@ export function getSiteUrl(raw?: string) {
 
 export function getContactEmail(raw?: string) {
   return raw || DEFAULT_CONTACT_EMAIL
+}
+export function getWorkerMessageAcceptedDefault(raw?: string) {
+  return raw || 'Alles in orde. Tot ziens!'
+}
+
+export function getWorkerMessageDeniedDefault(raw?: string) {
+  return raw || 'Helaas kan ik niet beschikbaar zijn.'
 }

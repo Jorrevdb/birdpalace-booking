@@ -296,7 +296,7 @@ function BookingsTable({ password }: { password: string }) {
         body: JSON.stringify({
           password,
           updates: { status: newStatus },
-          notify: false,
+          notify: true,
         }),
       })
       const data = await res.json()
@@ -541,6 +541,8 @@ function SettingsPanel({ password }: { password: string }) {
   const [tourTimes, setTourTimes] = useState('11:00,13:00,15:00')
   const [primaryColor, setPrimaryColor] = useState('#2d6a4f')
   const [bookingFormFields, setBookingFormFields] = useState('')
+  const [workerMessageAcceptedDefault, setWorkerMessageAcceptedDefault] = useState('Alles in orde. Tot ziens!')
+  const [workerMessageDeniedDefault, setWorkerMessageDeniedDefault] = useState('Helaas kan ik niet beschikbaar zijn.')
   const [message, setMessage] = useState('')
 
   async function fetchSettings() {
@@ -557,6 +559,8 @@ function SettingsPanel({ password }: { password: string }) {
       setTourTimes(s.tour_times ?? '11:00,13:00,15:00')
       setPrimaryColor(s.primary_color ?? '#2d6a4f')
       setBookingFormFields(s.booking_form_fields ? JSON.stringify(s.booking_form_fields) : '')
+      setWorkerMessageAcceptedDefault(s.worker_message_accepted_default ?? 'Alles in orde. Tot ziens!')
+      setWorkerMessageDeniedDefault(s.worker_message_denied_default ?? 'Helaas kan ik niet beschikbaar zijn.')
     } catch (err: any) {
       setMessage(err.message || 'Failed to fetch settings')
     } finally {
@@ -575,6 +579,8 @@ function SettingsPanel({ password }: { password: string }) {
         tour_duration_minutes: Number(tourDuration || 90),
         tour_times: tourTimes,
         primary_color: primaryColor,
+        worker_message_accepted_default: workerMessageAcceptedDefault,
+        worker_message_denied_default: workerMessageDeniedDefault,
       }
       if (bookingFormFields) {
         try { payload.booking_form_fields = JSON.parse(bookingFormFields) } catch (e) { payload.booking_form_fields = bookingFormFields }
@@ -619,6 +625,13 @@ function SettingsPanel({ password }: { password: string }) {
           </label>
           <label style={{ display: 'block', marginTop: 8 }}>Booking form fields (JSON)
             <textarea value={bookingFormFields} onChange={(e) => setBookingFormFields(e.target.value)} style={{ display: 'block', marginTop: 6, width: '100%' }} placeholder='e.g. [{"id":"children_count","label":"Children"}]' />
+          </label>
+          <h3 style={{ marginTop: 20, marginBottom: 8 }}>Default worker messages</h3>
+          <label style={{ display: 'block', marginTop: 8 }}>Default message when accepting
+            <textarea value={workerMessageAcceptedDefault} onChange={(e) => setWorkerMessageAcceptedDefault(e.target.value)} style={{ display: 'block', marginTop: 6, width: '100%', minHeight: 60 }} placeholder='Default message for accepted bookings' />
+          </label>
+          <label style={{ display: 'block', marginTop: 8 }}>Default message when denying
+            <textarea value={workerMessageDeniedDefault} onChange={(e) => setWorkerMessageDeniedDefault(e.target.value)} style={{ display: 'block', marginTop: 6, width: '100%', minHeight: 60 }} placeholder='Default message for denied bookings' />
           </label>
           <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
             <button onClick={save} style={{ padding: '8px 12px' }}>Save settings</button>

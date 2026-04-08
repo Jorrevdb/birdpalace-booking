@@ -5,12 +5,13 @@ import { supabaseAdmin } from '@/lib/supabase'
 
 export async function GET(
   _req: NextRequest,
-  { params }: { params: { token: string } }
+  { params }: { params: Promise<{ token: string }> }
 ) {
+  const { token } = await params
   const { data: booking, error } = await supabaseAdmin
     .from('bookings')
     .select('*')
-    .eq('edit_token', params.token)
+    .eq('edit_token', token)
     .single()
 
   if (error || !booking) {

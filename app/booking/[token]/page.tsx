@@ -34,9 +34,10 @@ async function getBooking(token: string): Promise<Booking | null> {
 export default async function BookingStatusPage({
   params,
 }: {
-  params: { token: string }
+  params: Promise<{ token: string }>
 }) {
-  const booking = await getBooking(params.token)
+  const { token } = await params
+  const booking = await getBooking(token)
 
   if (!booking) {
     return (

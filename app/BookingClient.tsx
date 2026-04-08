@@ -60,7 +60,8 @@ function CalendarGrid({
           const isToday = dateStr === todayStr
           const isSelected = dateStr === selectedDateStr
           const isPast = day < today
-          const isAvailable = (availability[dateStr]?.length ?? 0) > 0 && !isPast
+          const isNotAvailable = day <= today  // Today and past days are not available
+          const isAvailable = (availability[dateStr]?.length ?? 0) > 0 && !isNotAvailable
 
           // Dot = today indicator (always, unless selected — then the fill says it all)
           const showDot = isToday && !isSelected

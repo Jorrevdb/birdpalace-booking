@@ -77,7 +77,8 @@ export async function sendWorkerNotificationEmail(
             <tr><td style="padding:8px 0;color:#666">Telefoon</td><td style="padding:8px 0;font-weight:600">${booking.visitor_phone}</td></tr>
           </table>
           <div style="margin:24px 0">
-            <a href="${respondUrl}" style="display:inline-block;padding:12px 28px;background:#2d6a4f;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Reageer op aanvraag</a>
+            <a href="${respondUrl}?action=accept" style="display:inline-block;padding:12px 28px;background:#2d6a4f;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;margin-right:12px">✓ Ik accepteer</a>
+            <a href="${respondUrl}?action=decline" style="display:inline-block;padding:12px 28px;background:#dc2626;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">✗ Ik kan niet</a>
           </div>
         </div>
       `,

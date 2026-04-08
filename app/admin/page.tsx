@@ -400,20 +400,17 @@ function BookingsTable({ password }: { password: string }) {
                 <td style={{ padding: '16px 8px', borderBottom: '1px solid #f3f4f6' }}>{b.visitor_name}</td>
                 <td style={{ padding: '16px 8px', borderBottom: '1px solid #f3f4f6' }}>{b.total_people}</td>
                 <td style={{ padding: '16px 8px', borderBottom: '1px solid #f3f4f6' }}>
-                  <select
-                    value={b.status}
-                    onChange={(e) => quickUpdateStatus(b, e.target.value)}
+                  <span
                     style={{
                       ...statusStyle(b.status),
+                      display: 'inline-block',
                       borderRadius: 999,
                       padding: '6px 14px',
                       fontWeight: 600,
                     }}
                   >
-                    <option value="pending">Afwachtend</option>
-                    <option value="approved">Geaccepteerd</option>
-                    <option value="denied">Geweigerd</option>
-                  </select>
+                    {b.status === 'pending' ? 'Afwachtend' : b.status === 'approved' ? 'Geaccepteerd' : 'Geweigerd'}
+                  </span>
                 </td>
                 <td style={{ padding: '16px 8px', borderBottom: '1px solid #f3f4f6', textAlign: 'right' }}>
                   <button

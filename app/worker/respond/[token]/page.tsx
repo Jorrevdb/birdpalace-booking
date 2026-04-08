@@ -12,6 +12,7 @@ function WorkerRespondInner({ token }: { token: string }) {
   const [message, setMessage] = useState('')
   const [result, setResult] = useState<string>('')
   const [settings, setSettings] = useState<Settings | null>(null)
+  const [selectedAction, setSelectedAction] = useState<'accept' | 'decline' | null>(action)
 
   useEffect(() => {
     // Fetch settings to get default messages
@@ -30,22 +31,26 @@ function WorkerRespondInner({ token }: { token: string }) {
   }, [])
 
   useEffect(() => {
-    // Auto-submit if action is in the URL (from email link)
-    if (action === 'accept' || action === 'decline') {
-      handleRespond(action)
+    // If action is in URL, initialize with default message
+    if (action) {
+      setSelectedAction(action)
+      if (action === 'accept' && settings?.worker_message_accepted_default) {
+        setMessage(settings.worker_message_accepted_default)
+      } else if (action === 'decline' && settings?.worker_message_denied_default) {
+        setMessage(settings.worker_message_denied_default)
+      }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [action, settings])
 
-  async function handleRespond(selectedAction: 'accept' | 'decline') {
+  async function handleRespond(action: 'accept' | 'decline') {
     setStatus('loading')
     
-    // Use default message if empty
+    // Use default message only if message is truly empty
     let finalMessage = message
-    if (!finalMessage) {
-      if (selectedAction === 'accept' && settings?.worker_message_accepted_default) {
+    if (!finalMessage.trim()) {
+      if (action === 'accept' && settings?.worker_message_accepted_default) {
         finalMessage = settings.worker_message_accepted_default
-      } else if (selectedAction === 'decline' && settings?.worker_message_denied_default) {
+      } else if (action === 'decline' && settings?.worker_message_denied_default) {
         finalMessage = settings.worker_message_denied_default
       }
     }
@@ -54,7 +59,7 @@ function WorkerRespondInner({ token }: { token: string }) {
       const res = await fetch(`/api/worker/respond/${token}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: selectedAction, message: finalMessage }),
+        body: JSON.stringify({ action, message: finalMessage }),
       })
       const data = await res.json()
 
@@ -66,7 +71,7 @@ function WorkerRespondInner({ token }: { token: string }) {
 
       if (res.ok) {
         setResult(
-          selectedAction === 'accept'
+          action === 'accept'
             ? 'Je hebt de boeking geaccepteerd. De bezoeker krijgt een bevestigingsmail.'
             : 'Je hebt de boeking geweigerd.'
         )
@@ -105,14 +110,20 @@ function WorkerRespondInner({ token }: { token: string }) {
     )
   }
 
-  // Manual response (no action in URL)
+  // Manual response
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-4">
       <p className="text-gray-700">Kan jij deze tour begeleiden?</p>
 
+      {selectedAction && (
+        <div className={`p-3 rounded-lg text-sm font-medium ${selectedAction === 'accept' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+          Je hebt gekozen: <strong>{selectedAction === 'accept' ? '✓ Accepteren' : '✗ Weigeren'}</strong> (klik opnieuw om te veranderen)
+        </div>
+      )}
+
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1.5">
-          Bericht (optioneel)
+          Bericht {selectedAction ? '(optioneel)' : '(optioneel)'}
         </label>
         <p className="text-xs text-gray-500 mb-2">
           Accepteren: <em>{settings?.worker_message_accepted_default || 'Alles in orde. Tot ziens!'}</em> | 
@@ -129,18 +140,45 @@ function WorkerRespondInner({ token }: { token: string }) {
 
       <div className="flex gap-3">
         <button
-          onClick={() => handleRespond('accept')}
-          className="flex-1 py-3 bg-brand-600 text-white rounded-xl font-semibold hover:bg-brand-700 transition-colors"
+          onClick={() => {
+            setSelectedAction('accept')
+            if (!message && settings?.worker_message_accepted_default) {
+              setMessage(settings.worker_message_accepted_default)
+            }
+          }}
+          className={`flex-1 py-3 rounded-xl font-semibold transition-colors ${
+            selectedAction === 'accept'
+              ? 'bg-brand-600 text-white'
+              : 'bg-gray-100 text-gray-900 hover:bg-gray-200'
+          }`}
         >
           ✓ Ik accepteer
         </button>
         <button
-          onClick={() => handleRespond('decline')}
-          className="flex-1 py-3 bg-red-600 text-white rounded-xl font-semibold hover:bg-red-700 transition-colors"
+          onClick={() => {
+            setSelectedAction('decline')
+            if (!message && settings?.worker_message_denied_default) {
+              setMessage(settings.worker_message_denied_default)
+            }
+          }}
+          className={`flex-1 py-3 rounded-xl font-semibold transition-colors ${
+            selectedAction === 'decline'
+              ? 'bg-red-600 text-white'
+              : 'bg-gray-100 text-gray-900 hover:bg-gray-200'
+          }`}
         >
           ✗ Ik kan niet
         </button>
       </div>
+
+      {selectedAction && (
+        <button
+          onClick={() => handleRespond(selectedAction)}
+          className="w-full py-3 bg-gray-900 text-white rounded-xl font-semibold hover:bg-gray-800 transition-colors"
+        >
+          Bevestig {selectedAction === 'accept' ? 'acceptatie' : 'weigering'}
+        </button>
+      )}
     </div>
   )
 }
@@ -148,8 +186,9 @@ function WorkerRespondInner({ token }: { token: string }) {
 export default function WorkerRespondPage({
   params,
 }: {
-  params: { token: string }
+  params: Promise<{ token: string }>
 }) {
+  const { token } = await params
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4">
       <div className="max-w-lg mx-auto">
@@ -159,7 +198,7 @@ export default function WorkerRespondPage({
             <div className="w-8 h-8 border-2 border-brand-600 border-t-transparent rounded-full animate-spin" />
           </div>
         }>
-          <WorkerRespondInner token={params.token} />
+          <WorkerRespondInner token={token} />
         </Suspense>
       </div>
     </div>

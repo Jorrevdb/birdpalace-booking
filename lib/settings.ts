@@ -183,7 +183,17 @@ export function getSiteName(raw?: string) {
 }
 
 export function getSiteUrl(raw?: string) {
-  return raw || DEFAULT_SITE_URL
+  if (raw && String(raw).trim().length > 0) return raw
+
+  const envUrl = process.env.NEXT_PUBLIC_SITE_URL
+  if (envUrl && String(envUrl).trim().length > 0) return envUrl
+
+  const vercelUrl = process.env.VERCEL_URL
+  if (vercelUrl && String(vercelUrl).trim().length > 0) {
+    return vercelUrl.startsWith('http') ? vercelUrl : `https://${vercelUrl}`
+  }
+
+  return DEFAULT_SITE_URL
 }
 
 export function getContactEmail(raw?: string) {

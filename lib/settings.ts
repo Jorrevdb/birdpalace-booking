@@ -183,7 +183,11 @@ export function getSiteName(raw?: string) {
 }
 
 export function getSiteUrl(raw?: string) {
-  if (raw && String(raw).trim().length > 0) return raw
+  const normalizedRaw = raw && String(raw).trim().length > 0 ? String(raw).trim() : ''
+  const isPreviewUrl = normalizedRaw.includes('-git-main-') || normalizedRaw.includes('.vercel.app') && normalizedRaw.includes('-git-')
+  const isProduction = process.env.VERCEL_ENV === 'production'
+
+  if (normalizedRaw && !(isProduction && isPreviewUrl)) return normalizedRaw
 
   const envUrl = process.env.NEXT_PUBLIC_SITE_URL
   if (envUrl && String(envUrl).trim().length > 0) return envUrl

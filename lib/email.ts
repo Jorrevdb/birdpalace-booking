@@ -139,7 +139,10 @@ export async function sendBookingDeniedEmail(
           <h2 style="color:#dc2626">Helaas...</h2>
           <p>We kunnen de tour op ${formatDate(booking.tour_date)} om ${booking.tour_time} niet bevestigen.</p>
           ${workerMessage ? `<blockquote style="border-left:4px solid #dc2626;margin:0;padding:12px 16px;background:#fef2f2">${workerMessage}</blockquote>` : ''}
-          <a href="${siteUrl}" style="display:inline-block;margin-top:24px;padding:12px 24px;background:#2d6a4f;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Kies een andere datum</a>
+          <div style="margin-top:24px">
+            <a href="${siteUrl}/booking/${booking.edit_token}" style="display:inline-block;margin-right:12px;padding:12px 24px;background:#2d6a4f;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Bekijk boekingsstatus</a>
+            <a href="${siteUrl}" style="display:inline-block;padding:12px 24px;background:#111827;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Kies een andere datum</a>
+          </div>
         </div>
       `,
     })

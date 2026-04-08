@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 import { format, parseISO } from 'date-fns'
 import { nl } from 'date-fns/locale'
 import Link from 'next/link'
+import { headers } from 'next/headers'
 
 interface Booking {
   id: string
@@ -21,7 +22,12 @@ interface Booking {
 
 async function getBooking(token: string): Promise<Booking | null> {
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'
+    const h = headers()
+    const host = h.get('x-forwarded-host') ?? h.get('host')
+    const proto = h.get('x-forwarded-proto') ?? 'https'
+    const baseUrl = host
+      ? `${proto}://${host}`
+      : (process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000')
     const res = await fetch(`${baseUrl}/api/bookings/${token}`, { cache: 'no-store' })
     if (!res.ok) return null
     const data = await res.json()

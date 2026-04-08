@@ -183,7 +183,7 @@ function WorkerRespondInner({ token }: { token: string }) {
   )
 }
 
-export default function WorkerRespondPage({
+export default async function WorkerRespondPage({
   params,
 }: {
   params: Promise<{ token: string }>

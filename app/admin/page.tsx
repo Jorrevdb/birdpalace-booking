@@ -1,11 +1,12 @@
 "use client"
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 
 type Worker = { id: string; name: string; email: string; google_calendar_id: string; created_at?: string }
 
-export default function AdminPage() {
+// Inner component so useSearchParams() is inside a Suspense boundary (Next.js 14 requirement)
+function AdminPageInner() {
   const searchParams = useSearchParams()
   const deepBookingId = searchParams.get('booking') // e.g. /admin?booking=<id>
 
@@ -18,6 +19,25 @@ export default function AdminPage() {
   const [loadingWorkers, setLoadingWorkers] = useState(false)
   const [message, setMessage] = useState('')
 
+  // On mount: restore saved password and auto-login if available
+  useEffect(() => {
+    const saved = typeof window !== 'undefined' ? localStorage.getItem('admin_pw') : null
+    if (!saved) return
+    setPassword(saved)
+    // Auto-login with the saved password
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/admin/workers?password=${encodeURIComponent(saved)}`)
+        if (!res.ok) { localStorage.removeItem('admin_pw'); return }
+        const data = await res.json()
+        setClientEmail(data.client_email ?? null)
+        setAuthenticated(true)
+        fetchWorkers(saved)
+        if (deepBookingId) setTab('bookings')
+      } catch {}
+    })()
+  }, [])
+
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
     setMessage('')
@@ -27,11 +47,12 @@ export default function AdminPage() {
       const data = await res.json()
       setClientEmail(data.client_email ?? null)
       setAuthenticated(true)
+      localStorage.setItem('admin_pw', password) // remember for next visit
       fetchWorkers(password)
       // If ?booking=<id> in URL, switch to bookings tab and open that booking
       if (deepBookingId) setTab('bookings')
     } catch (err) {
-      setMessage('Invalid password')
+      setMessage('Verkeerd wachtwoord')
     }
   }
 
@@ -254,7 +275,7 @@ function BookingsTable({ password }: { password: string }) {
     return { border: '1px solid #d1d5db', color: '#374151', background: '#fff' }
   }
 
-  async function fetchBookings(autoOpenId?: string) {
+  async function fetchBookings() {
     setLoading(true)
     try {
       const res = await fetch(`/api/admin/bookings/list?password=${encodeURIComponent(password)}`)
@@ -268,16 +289,6 @@ function BookingsTable({ password }: { password: string }) {
         return 0
       })
       setBookings(sorted)
-
-      // If a booking ID was passed via URL, auto-open its modal
-      const targetId = autoOpenId ?? deepBookingId
-      if (targetId) {
-        const target = sorted.find((b: any) => b.id === targetId)
-        if (target) {
-          setTab('bookings')
-          openModalFor(target)
-        }
-      }
     } catch (err: any) {
       setMessage(err.message || 'Failed to fetch bookings')
     } finally {
@@ -285,6 +296,16 @@ function BookingsTable({ password }: { password: string }) {
     }
   }
   useEffect(() => { fetchBookings() }, [])
+
+  // Auto-open a specific booking when ?booking=<id> is in the URL
+  useEffect(() => {
+    if (!deepBookingId || !bookings.length || !authenticated) return
+    const target = bookings.find((b: any) => b.id === deepBookingId)
+    if (target) {
+      setTab('bookings')
+      openModalFor(target)
+    }
+  }, [bookings, deepBookingId, authenticated])
 
   function openModalFor(booking: any) {
     setActiveBooking(booking)
@@ -1050,5 +1071,13 @@ function CalendarPanel({ password }: { password: string }) {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function AdminPage() {
+  return (
+    <Suspense fallback={null}>
+      <AdminPageInner />
+    </Suspense>
   )
 }

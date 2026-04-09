@@ -126,7 +126,7 @@ function AdminPageInner() {
           {tab === 'bookings' && (
             <div style={{ marginTop: 12 }}>
               <h2>Bookings</h2>
-              <BookingsTable password={password} />
+              <BookingsTable password={password} deepBookingId={deepBookingId} />
             </div>
           )}
 
@@ -235,7 +235,7 @@ function WorkerRow({ worker, password, onDeleted, onUpdated }: { worker: any; pa
   )
 }
 
-function BookingsTable({ password }: { password: string }) {
+function BookingsTable({ password, deepBookingId }: { password: string; deepBookingId?: string | null }) {
   const [bookings, setBookings] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
@@ -297,15 +297,12 @@ function BookingsTable({ password }: { password: string }) {
   }
   useEffect(() => { fetchBookings() }, [])
 
-  // Auto-open a specific booking when ?booking=<id> is in the URL
+  // Auto-open a specific booking when ?booking=<id> is passed as a prop
   useEffect(() => {
-    if (!deepBookingId || !bookings.length || !authenticated) return
+    if (!deepBookingId || !bookings.length) return
     const target = bookings.find((b: any) => b.id === deepBookingId)
-    if (target) {
-      setTab('bookings')
-      openModalFor(target)
-    }
-  }, [bookings, deepBookingId, authenticated])
+    if (target) openModalFor(target)
+  }, [bookings, deepBookingId])
 
   function openModalFor(booking: any) {
     setActiveBooking(booking)

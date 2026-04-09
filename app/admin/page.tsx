@@ -1,10 +1,14 @@
 "use client"
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
+import { useSearchParams } from 'next/navigation'
 
 type Worker = { id: string; name: string; email: string; google_calendar_id: string; created_at?: string }
 
 export default function AdminPage() {
+  const searchParams = useSearchParams()
+  const deepBookingId = searchParams.get('booking') // e.g. /admin?booking=<id>
+
   const [password, setPassword] = useState('')
   const [authenticated, setAuthenticated] = useState(false)
   const [clientEmail, setClientEmail] = useState<string | null>(null)
@@ -23,8 +27,9 @@ export default function AdminPage() {
       const data = await res.json()
       setClientEmail(data.client_email ?? null)
       setAuthenticated(true)
-      // load workers immediately
       fetchWorkers(password)
+      // If ?booking=<id> in URL, switch to bookings tab and open that booking
+      if (deepBookingId) setTab('bookings')
     } catch (err) {
       setMessage('Invalid password')
     }
@@ -249,7 +254,7 @@ function BookingsTable({ password }: { password: string }) {
     return { border: '1px solid #d1d5db', color: '#374151', background: '#fff' }
   }
 
-  async function fetchBookings() {
+  async function fetchBookings(autoOpenId?: string) {
     setLoading(true)
     try {
       const res = await fetch(`/api/admin/bookings/list?password=${encodeURIComponent(password)}`)
@@ -263,6 +268,16 @@ function BookingsTable({ password }: { password: string }) {
         return 0
       })
       setBookings(sorted)
+
+      // If a booking ID was passed via URL, auto-open its modal
+      const targetId = autoOpenId ?? deepBookingId
+      if (targetId) {
+        const target = sorted.find((b: any) => b.id === targetId)
+        if (target) {
+          setTab('bookings')
+          openModalFor(target)
+        }
+      }
     } catch (err: any) {
       setMessage(err.message || 'Failed to fetch bookings')
     } finally {

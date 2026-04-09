@@ -227,7 +227,6 @@ function BookingsTable({ password }: { password: string }) {
   const [formPhone, setFormPhone] = useState('')
   const [formAdults, setFormAdults] = useState(1)
   const [formChildren, setFormChildren] = useState(0)
-  const [formFeeding, setFormFeeding] = useState(0)
   const [formWorkerMessage, setFormWorkerMessage] = useState('')
 
   function formatNlDate(isoDate: string) {
@@ -282,7 +281,6 @@ function BookingsTable({ password }: { password: string }) {
     setFormPhone(booking.visitor_phone || '')
     setFormAdults(Number(booking.total_people || 1))
     setFormChildren(Number(booking.children_count || 0))
-    setFormFeeding(Number(booking.penguin_feeding_count || 0))
     setFormWorkerMessage(booking.worker_message || '')
     setNotifyVisitor(true)
     setModalOpen(true)
@@ -322,7 +320,6 @@ function BookingsTable({ password }: { password: string }) {
           visitor_phone: formPhone,
           total_people: Number(formAdults || 1),
           children_count: Number(formChildren || 0),
-          penguin_feeding_count: Number(formFeeding || 0),
           worker_message: formWorkerMessage || null,
         },
         notify: notifyVisitor,
@@ -484,7 +481,7 @@ function BookingsTable({ password }: { password: string }) {
                     </label>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginTop: 12 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
                     <label style={{ display: 'block' }}>
                       Volwassenen
                       <input type="number" min={1} value={formAdults} onChange={(e) => setFormAdults(Number(e.target.value || 1))} style={{ display: 'block', marginTop: 6, width: '100%', padding: 12, borderRadius: 12, border: '1px solid #d1d5db' }} />
@@ -492,10 +489,6 @@ function BookingsTable({ password }: { password: string }) {
                     <label style={{ display: 'block' }}>
                       Kinderen
                       <input type="number" min={0} value={formChildren} onChange={(e) => setFormChildren(Number(e.target.value || 0))} style={{ display: 'block', marginTop: 6, width: '100%', padding: 12, borderRadius: 12, border: '1px solid #d1d5db' }} />
-                    </label>
-                    <label style={{ display: 'block' }}>
-                      Pinguïns voeren
-                      <input type="number" min={0} value={formFeeding} onChange={(e) => setFormFeeding(Number(e.target.value || 0))} style={{ display: 'block', marginTop: 6, width: '100%', padding: 12, borderRadius: 12, border: '1px solid #d1d5db' }} />
                     </label>
                   </div>
 

@@ -116,12 +116,6 @@ export default async function BookingStatusPage({
             <span className="text-gray-500">Kinderen</span>
             <span className="font-medium text-gray-900">{booking.children_count}</span>
           </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-gray-500">Pinguïns voeren</span>
-            <span className="font-medium text-gray-900">
-              {booking.penguin_feeding_count} persoon{booking.penguin_feeding_count !== 1 ? 'en' : ''}
-            </span>
-          </div>
           <div className="border-t border-gray-100 pt-3 flex justify-between text-sm">
             <span className="text-gray-500">Naam</span>
             <span className="font-medium text-gray-900">{booking.visitor_name}</span>

@@ -493,6 +493,7 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
                 <input
                   className={inputClass}
                   type="text"
+                  name="name"
                   autoComplete="name"
                   placeholder="Voor- en achternaam"
                   value={form.visitor_name}
@@ -506,6 +507,7 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
                 <input
                   className={inputClass}
                   type="email"
+                  name="email"
                   autoComplete="email"
                   inputMode="email"
                   placeholder="jouw@email.be"
@@ -520,6 +522,7 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
                 <input
                   className={inputClass}
                   type="tel"
+                  name="tel"
                   autoComplete="tel"
                   inputMode="tel"
                   placeholder="0470 12 34 56"

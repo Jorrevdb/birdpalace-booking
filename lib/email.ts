@@ -37,7 +37,6 @@ export async function sendBookingReceivedEmail(booking: Booking): Promise<void> 
             <tr><td style="padding:8px 0;color:#666;width:160px">Datum</td><td style="padding:8px 0;font-weight:600">${formatDate(booking.tour_date)}</td></tr>
             <tr><td style="padding:8px 0;color:#666">Tijdslot</td><td style="padding:8px 0;font-weight:600">${booking.tour_time}</td></tr>
             <tr><td style="padding:8px 0;color:#666">Personen</td><td style="padding:8px 0;font-weight:600">${booking.total_people} (${booking.children_count} kinderen)</td></tr>
-            <tr><td style="padding:8px 0;color:#666">Pinguïns voeren</td><td style="padding:8px 0;font-weight:600">${booking.penguin_feeding_count} persoon${booking.penguin_feeding_count !== 1 ? 'en' : ''}</td></tr>
           </table>
           <a href="${siteUrl}/booking/${booking.edit_token}" style="display:inline-block;padding:12px 24px;background:#2d6a4f;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Bekijk boekingsstatus</a>
           <p style="margin-top:32px;color:#888;font-size:13px">Vragen? Mail ons op <a href="mailto:${contact}">${contact}</a></p>
@@ -72,7 +71,6 @@ export async function sendWorkerNotificationEmail(
             <tr><td style="padding:8px 0;color:#666;width:160px">Datum</td><td style="padding:8px 0;font-weight:600">${formatDate(booking.tour_date)}</td></tr>
             <tr><td style="padding:8px 0;color:#666">Tijdslot</td><td style="padding:8px 0;font-weight:600">${booking.tour_time}</td></tr>
             <tr><td style="padding:8px 0;color:#666">Personen</td><td style="padding:8px 0;font-weight:600">${booking.total_people} (${booking.children_count} kinderen)</td></tr>
-            <tr><td style="padding:8px 0;color:#666">Pinguïns voeren</td><td style="padding:8px 0;font-weight:600">${booking.penguin_feeding_count} persoon${booking.penguin_feeding_count !== 1 ? 'en' : ''}</td></tr>
             <tr><td style="padding:8px 0;color:#666">Naam bezoeker</td><td style="padding:8px 0;font-weight:600">${booking.visitor_name}</td></tr>
             <tr><td style="padding:8px 0;color:#666">Telefoon</td><td style="padding:8px 0;font-weight:600">${booking.visitor_phone}</td></tr>
           </table>

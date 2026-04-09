@@ -495,7 +495,6 @@ export async function createBookingEvent(booking: Booking): Promise<void> {
           `Bezoeker: ${booking.visitor_name}`,
           `Email: ${booking.visitor_email}`,
           `Tel: ${booking.visitor_phone}`,
-          `Pinguïns voeren: ${booking.penguin_feeding_count}`,
         ].join('\n'),
         start: { dateTime: start.toISOString() },
         end: { dateTime: end.toISOString() },

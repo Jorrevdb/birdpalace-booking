@@ -102,6 +102,47 @@ function CalendarGrid({
   )
 }
 
+// ── Phone formatting ──────────────────────────────────────────────────────────
+function formatBelgianPhone(raw: string): string {
+  const hasPlus = raw.startsWith('+')
+  const digits = raw.replace(/\D/g, '')
+  if (!digits) return hasPlus ? '+' : ''
+
+  // International +32
+  if (hasPlus && digits.startsWith('32')) {
+    const local = digits.slice(2)
+    if (local.startsWith('4')) {
+      // Mobile: +32 4XX XX XX XX
+      const d = local.slice(0, 9)
+      return ['+32', d.slice(0, 3), d.slice(3, 5), d.slice(5, 7), d.slice(7, 9)]
+        .filter(Boolean).join(' ')
+    }
+    // Fixed: +32 X XXX XX XX
+    const d = local.slice(0, 8)
+    return ['+32', d.slice(0, 1), d.slice(1, 4), d.slice(4, 6), d.slice(6, 8)]
+      .filter(Boolean).join(' ')
+  }
+
+  // Mobile 04XX XX XX XX (10 digits)
+  if (digits.startsWith('04')) {
+    const d = digits.slice(0, 10)
+    return [d.slice(0, 4), d.slice(4, 6), d.slice(6, 8), d.slice(8, 10)]
+      .filter(Boolean).join(' ')
+  }
+
+  // Fixed 02/03/09 XX XXX XX XX (9 digits, 2-digit area code)
+  if (/^0[2-9]/.test(digits) && !digits.startsWith('04')) {
+    const d = digits.slice(0, 9)
+    if (digits.startsWith('02') || digits.startsWith('03') || digits.startsWith('09')) {
+      return [d.slice(0, 2), d.slice(2, 5), d.slice(5, 7), d.slice(7, 9)].filter(Boolean).join(' ')
+    }
+    // 3-digit area code (011, 016, etc.)
+    return [d.slice(0, 3), d.slice(3, 5), d.slice(5, 7), d.slice(7, 9)].filter(Boolean).join(' ')
+  }
+
+  return raw // unknown format — leave as-is
+}
+
 type Step = 1 | 2 | 3 | 'done'
 
 interface BookingForm {
@@ -378,7 +419,6 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
                   ...f,
                   total_people: v,
                   children_count: Math.min(f.children_count, v),
-                  penguin_feeding_count: Math.min(f.penguin_feeding_count, v),
                 }))
               }
             />
@@ -390,14 +430,17 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
               max={form.total_people}
               onChange={(v) => setForm((f) => ({ ...f, children_count: v }))}
             />
-            <Counter
-              label="Pinguïns voeren"
-              description="Hoeveel personen willen pinguïns voeren?"
-              value={form.penguin_feeding_count}
-              min={0}
-              max={form.total_people}
-              onChange={(v) => setForm((f) => ({ ...f, penguin_feeding_count: v }))}
-            />
+
+            {/* Penguin feeding — decided on-site, no number needed */}
+            <div className="flex items-start gap-3 pt-4">
+              <span className="text-2xl leading-none mt-0.5">🐧</span>
+              <div>
+                <p className="text-sm font-medium text-gray-800">Pinguïns voeren</p>
+                <p className="text-xs text-gray-400 mt-0.5 leading-relaxed">
+                  Interesse? Dat beslis je ter plaatse. De gids regelt alles op het moment zelf — geen zorgen!
+                </p>
+              </div>
+            </div>
           </div>
 
           <div className="mt-4 flex justify-between">
@@ -443,10 +486,6 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
                 <p>
                   <span className="font-medium">Personen:</span> {form.total_people} ({form.children_count} kinderen)
                 </p>
-                <p>
-                  <span className="font-medium">Pinguïns voeren:</span> {form.penguin_feeding_count} persoon
-                  {form.penguin_feeding_count !== 1 ? 'en' : ''}
-                </p>
               </div>
 
               <div>
@@ -454,6 +493,7 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
                 <input
                   className={inputClass}
                   type="text"
+                  autoComplete="name"
                   placeholder="Voor- en achternaam"
                   value={form.visitor_name}
                   onChange={(e) => setForm((f) => ({ ...f, visitor_name: e.target.value }))}
@@ -466,6 +506,8 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
                 <input
                   className={inputClass}
                   type="email"
+                  autoComplete="email"
+                  inputMode="email"
                   placeholder="jouw@email.be"
                   value={form.visitor_email}
                   onChange={(e) => setForm((f) => ({ ...f, visitor_email: e.target.value }))}
@@ -478,9 +520,13 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
                 <input
                   className={inputClass}
                   type="tel"
-                  placeholder="+32 ..."
+                  autoComplete="tel"
+                  inputMode="tel"
+                  placeholder="0470 12 34 56"
                   value={form.visitor_phone}
-                  onChange={(e) => setForm((f) => ({ ...f, visitor_phone: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, visitor_phone: formatBelgianPhone(e.target.value) }))
+                  }
                   required
                 />
               </div>
@@ -534,10 +580,13 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
             </svg>
           </div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Aanvraag ontvangen!</h2>
-          <p className="text-gray-500 mb-1">
-            Je ontvangt een e-mail zodra een medewerker je boeking heeft bevestigd.
+          <p className="text-gray-700 mb-1">
+            We hebben een bevestigingsmail gestuurd naar{' '}
+            <span className="font-semibold text-gray-900">{form.visitor_email}</span>.
           </p>
-          <p className="text-gray-500 text-sm mb-6">Dat duurt normaal niet lang.</p>
+          <p className="text-gray-500 text-sm mb-6">
+            Wij checken bij de pinguïns en toerako's of dit past — dat kan tot 2 werkdagen duren.
+          </p>
 
           <div className="bg-brand-50 rounded-xl p-4 text-sm text-gray-700 space-y-1 text-left mb-6">
             <p>
@@ -546,9 +595,6 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
             </p>
             <p>
               <span className="font-medium">Personen:</span> {form.total_people} ({form.children_count} kinderen)
-            </p>
-            <p>
-              <span className="font-medium">Pinguïns voeren:</span> {form.penguin_feeding_count}
             </p>
           </div>
 

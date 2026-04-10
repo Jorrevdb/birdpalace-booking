@@ -11,7 +11,7 @@ import { Counter } from '@/components/Counter'
 // Week starts on Monday. Dutch abbreviated day names.
 const WEEKDAY_LABELS = ['Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za', 'Zo']
 
-// ── Time input: HH:MM, digits only, auto-colon ────────────────────────────────
+// ── Time input: HH:MM, digits only, colon always visible, max 23:59 ───────────
 function TimeInput({
   onValidTime,
   resetKey,
@@ -21,22 +21,35 @@ function TimeInput({
 }) {
   const [raw, setRaw] = useState('')
 
-  // Reset internal state when resetKey changes (e.g. date changed or slot clicked)
+  // Reset when date changes or a slot button is clicked
   useEffect(() => { setRaw('') }, [resetKey])
 
-  const display = raw.length > 2 ? `${raw.slice(0, 2)}:${raw.slice(2)}` : raw
+  // Colon always appears after the first two digits: "18" → "18:", "180" → "18:0"
+  const display = raw.length >= 2 ? `${raw.slice(0, 2)}:${raw.slice(2)}` : raw
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    // When display is "HH:" and user presses backspace, delete the second hour digit
+    // instead of just stripping the colon (which would re-appear immediately)
+    if (e.key === 'Backspace' && raw.length === 2) {
+      e.preventDefault()
+      setRaw(raw.slice(0, 1))
+      onValidTime('')
+    }
+  }
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const digits = e.target.value.replace(/\D/g, '').slice(0, 4)
+
+    // Block hours > 23
+    if (digits.length >= 2 && parseInt(digits.slice(0, 2), 10) > 23) return
+    // Block minutes > 59
+    if (digits.length >= 4 && parseInt(digits.slice(2, 4), 10) > 59) return
+
     setRaw(digits)
 
     if (digits.length === 4) {
-      const h = parseInt(digits.slice(0, 2), 10)
-      const m = parseInt(digits.slice(2, 4), 10)
-      if (h <= 23 && m <= 59) {
-        onValidTime(`${digits.slice(0, 2)}:${digits.slice(2, 4)}`)
-        return
-      }
+      onValidTime(`${digits.slice(0, 2)}:${digits.slice(2, 4)}`)
+      return
     }
     onValidTime('')
   }
@@ -47,6 +60,7 @@ function TimeInput({
       inputMode="numeric"
       placeholder="--:--"
       value={display}
+      onKeyDown={handleKeyDown}
       onChange={handleChange}
       maxLength={5}
       className="w-[68px] px-2 py-3 rounded-xl border-2 border-gray-200 text-center text-sm font-semibold text-gray-700 focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600 transition-all"
@@ -118,8 +132,8 @@ function CalendarGrid({
             // Green ring = has scheduled slots
             circleClass = 'ring-2 ring-brand-600 text-gray-900 hover:bg-brand-50 cursor-pointer'
           } else if (isSuggestable) {
-            // No slots but future: subtly clickable to suggest own time
-            circleClass = 'text-gray-400 hover:bg-gray-100 hover:text-gray-600 cursor-pointer'
+            // No slots but future: black text, clickable to suggest own time
+            circleClass = 'text-gray-900 hover:bg-gray-100 cursor-pointer'
           } else {
             circleClass = 'text-gray-300 cursor-default'
           }

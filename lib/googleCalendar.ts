@@ -96,12 +96,28 @@ async function getCalendarClient() {
 
 // ── Date / time helpers ────────────────────────────────────────────────────────
 
+const TIMEZONE = 'Europe/Brussels'
+
 function makeSlotRange(date: string, time: string, durationMinutes: number) {
   const [hour, minute] = time.split(':').map(Number)
   const [y, m, d] = date.split('-').map(Number)
   const start = new Date(y, m - 1, d, hour, minute, 0)
   const end = new Date(start.getTime() + durationMinutes * 60_000)
   return { start, end }
+}
+
+/** Returns a local datetime string like "2024-06-15T16:00:00" (no Z, no offset). */
+function localDateTimeStr(date: string, time: string): string {
+  return `${date}T${time}:00`
+}
+
+/** Add minutes to a HH:MM time string and return "YYYY-MM-DDTHH:MM:00". */
+function addMinutesToLocalStr(date: string, time: string, minutes: number): string {
+  const [h, m] = time.split(':').map(Number)
+  const total = h * 60 + m + minutes
+  const endH = String(Math.floor(total / 60) % 24).padStart(2, '0')
+  const endM = String(total % 60).padStart(2, '0')
+  return `${date}T${endH}:${endM}:00`
 }
 
 function overlaps(
@@ -473,7 +489,7 @@ export async function getAvailableSlotsForRange(
   return availability
 }
 
-function buildEventBody(booking: Booking, start: Date, end: Date) {
+function buildEventBody(booking: Booking, durationMinutes: number) {
   const adults = booking.total_people - (booking.children_count ?? 0)
   const descLines = [
     `Bezoeker: ${booking.visitor_name}`,
@@ -485,8 +501,9 @@ function buildEventBody(booking: Booking, start: Date, end: Date) {
   return {
     summary: `Tour: ${booking.visitor_name} (${adults}v + ${booking.children_count ?? 0}k)`,
     description: descLines.join('\n'),
-    start: { dateTime: start.toISOString() },
-    end: { dateTime: end.toISOString() },
+    // Pass local datetime + timeZone so Google Calendar shows Belgian time correctly
+    start: { dateTime: localDateTimeStr(booking.tour_date, booking.tour_time), timeZone: TIMEZONE },
+    end: { dateTime: addMinutesToLocalStr(booking.tour_date, booking.tour_time, durationMinutes), timeZone: TIMEZONE },
   }
 }
 
@@ -503,11 +520,10 @@ export async function createBookingEvent(booking: Booking): Promise<string | nul
     const { cal, conn } = ctx
     const settings = await getSettings()
     const duration = getTourDuration(settings.tour_duration_minutes)
-    const { start, end } = makeSlotRange(booking.tour_date, booking.tour_time, duration)
 
     const res = await cal.events.insert({
       calendarId: conn.calendar_id,
-      requestBody: buildEventBody(booking, start, end),
+      requestBody: buildEventBody(booking, duration),
     })
     return res.data.id ?? null
   } catch (err) {
@@ -528,12 +544,11 @@ export async function updateBookingEvent(booking: Booking, calendarEventId: stri
     const { cal, conn } = ctx
     const settings = await getSettings()
     const duration = getTourDuration(settings.tour_duration_minutes)
-    const { start, end } = makeSlotRange(booking.tour_date, booking.tour_time, duration)
 
     await cal.events.update({
       calendarId: conn.calendar_id,
       eventId: calendarEventId,
-      requestBody: buildEventBody(booking, start, end),
+      requestBody: buildEventBody(booking, duration),
     })
   } catch (err) {
     console.error('[googleCalendar] updateBookingEvent failed', err)

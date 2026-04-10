@@ -32,17 +32,20 @@ async function insertCalendarEvent(workerCalendarId: string, booking: any) {
   await jwt.authorize()
   const calendar = google.calendar({ version: 'v3', auth: jwt })
 
-  // Build start/end in ISO format (local timezone may be required)
-  const start = new Date(`${booking.tour_date}T${booking.tour_time}:00`)
   const settings = await getSettings()
   const duration = getTourDuration(settings.tour_duration_minutes)
-  const end = new Date(start.getTime() + duration * 60_000)
+
+  // Use local datetime + timeZone to avoid UTC offset issues on Vercel servers
+  const [h, m] = booking.tour_time.split(':').map(Number)
+  const totalMins = h * 60 + m + duration
+  const endH = String(Math.floor(totalMins / 60) % 24).padStart(2, '0')
+  const endM = String(totalMins % 60).padStart(2, '0')
 
   const event = {
     summary: `Tour – ${booking.visitor_name}`,
-    description: `Booking for ${booking.total_people} people. Visitor: ${booking.visitor_name} (${booking.visitor_email})`,
-    start: { dateTime: start.toISOString() },
-    end: { dateTime: end.toISOString() },
+    description: `Bezoeker: ${booking.visitor_name} (${booking.visitor_email})\nPersonen: ${booking.total_people}`,
+    start: { dateTime: `${booking.tour_date}T${booking.tour_time}:00`, timeZone: 'Europe/Brussels' },
+    end: { dateTime: `${booking.tour_date}T${endH}:${endM}:00`, timeZone: 'Europe/Brussels' },
   }
 
   return calendar.events.insert({ calendarId: workerCalendarId, requestBody: event })

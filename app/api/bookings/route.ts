@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Verplichte velden ontbreken' }, { status: 400 })
     }
 
-    // Insert booking into Supabase
+    // Insert booking into Supabase (without visitor_message first for safety)
     const { data: booking, error: bookingError } = await supabaseAdmin
       .from('bookings')
       .insert({
@@ -33,7 +33,6 @@ export async function POST(req: NextRequest) {
         visitor_name,
         visitor_email,
         visitor_phone,
-        visitor_message: visitor_message ?? null,
         status: 'pending',
       })
       .select()
@@ -42,6 +41,19 @@ export async function POST(req: NextRequest) {
     if (bookingError || !booking) {
       console.error('[bookings POST] insert error', bookingError)
       return NextResponse.json({ error: 'Kon boeking niet opslaan' }, { status: 500 })
+    }
+
+    // Store visitor message separately so a missing column never breaks bookings
+    if (visitor_message) {
+      try {
+        await supabaseAdmin
+          .from('bookings')
+          .update({ visitor_message })
+          .eq('id', booking.id)
+        booking.visitor_message = visitor_message
+      } catch (vmErr) {
+        console.warn('[bookings POST] visitor_message not saved – run migration:', vmErr)
+      }
     }
 
     // Fetch active workers

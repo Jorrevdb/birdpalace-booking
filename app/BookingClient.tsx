@@ -11,6 +11,49 @@ import { Counter } from '@/components/Counter'
 // Week starts on Monday. Dutch abbreviated day names.
 const WEEKDAY_LABELS = ['Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za', 'Zo']
 
+// ── Time input: HH:MM, digits only, auto-colon ────────────────────────────────
+function TimeInput({
+  onValidTime,
+  resetKey,
+}: {
+  onValidTime: (time: string) => void
+  resetKey?: string | number
+}) {
+  const [raw, setRaw] = useState('')
+
+  // Reset internal state when resetKey changes (e.g. date changed or slot clicked)
+  useEffect(() => { setRaw('') }, [resetKey])
+
+  const display = raw.length > 2 ? `${raw.slice(0, 2)}:${raw.slice(2)}` : raw
+
+  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const digits = e.target.value.replace(/\D/g, '').slice(0, 4)
+    setRaw(digits)
+
+    if (digits.length === 4) {
+      const h = parseInt(digits.slice(0, 2), 10)
+      const m = parseInt(digits.slice(2, 4), 10)
+      if (h <= 23 && m <= 59) {
+        onValidTime(`${digits.slice(0, 2)}:${digits.slice(2, 4)}`)
+        return
+      }
+    }
+    onValidTime('')
+  }
+
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      placeholder="--:--"
+      value={display}
+      onChange={handleChange}
+      maxLength={5}
+      className="w-[68px] px-2 py-3 rounded-xl border-2 border-gray-200 text-center text-sm font-semibold text-gray-700 focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600 transition-all"
+    />
+  )
+}
+
 function CalendarGrid({
   month,
   selectedDateStr,
@@ -59,29 +102,36 @@ function CalendarGrid({
           const dateStr = format(day, 'yyyy-MM-dd')
           const isToday = dateStr === todayStr
           const isSelected = dateStr === selectedDateStr
-          const isPast = day < today
-          const isNotAvailable = day <= today  // Today and past days are not available
-          const isAvailable = (availability[dateStr]?.length ?? 0) > 0 && !isNotAvailable
+          const isNotAvailable = day <= today  // Today and past: not selectable
+          const hasSlots = (availability[dateStr]?.length ?? 0) > 0
+          const isAvailable = hasSlots && !isNotAvailable
+          // Future days without slots can still be clicked to suggest a custom time
+          const isSuggestable = !isNotAvailable && !hasSlots
 
-          // Dot = today indicator (always, unless selected — then the fill says it all)
+          // Dot = today indicator (always, unless selected)
           const showDot = isToday && !isSelected
 
           let circleClass = ''
           if (isSelected) {
             circleClass = 'bg-brand-600 text-white'
           } else if (isAvailable) {
-            // Green ring = bookable
+            // Green ring = has scheduled slots
             circleClass = 'ring-2 ring-brand-600 text-gray-900 hover:bg-brand-50 cursor-pointer'
+          } else if (isSuggestable) {
+            // No slots but future: subtly clickable to suggest own time
+            circleClass = 'text-gray-400 hover:bg-gray-100 hover:text-gray-600 cursor-pointer'
           } else {
             circleClass = 'text-gray-300 cursor-default'
           }
+
+          const isClickable = isAvailable || isSuggestable
 
           return (
             <div key={dateStr} className="flex items-center justify-center h-10 sm:h-[54px]">
               <button
                 type="button"
-                disabled={!isAvailable}
-                onClick={() => isAvailable && onSelect(dateStr)}
+                disabled={!isClickable}
+                onClick={() => isClickable && onSelect(dateStr)}
                 className={`relative flex items-center justify-center w-7 h-7 sm:w-10 sm:h-10 rounded-full text-[11px] sm:text-sm font-semibold transition-colors select-none focus:outline-none ${circleClass}`}
               >
                 {/* Number — nudge up slightly when dot sits below */}
@@ -165,6 +215,10 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [editToken, setEditToken] = useState('')
+  // Tracks whether the currently selected time came from the custom "Anders" input
+  const [isCustomTime, setIsCustomTime] = useState(false)
+  // Incrementing this key remounts TimeInput, resetting its displayed value
+  const [timeInputResetKey, setTimeInputResetKey] = useState(0)
 
   const [form, setForm] = useState<BookingForm>({
     tour_date: '',
@@ -252,6 +306,8 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
   }, [selectedMonth, fetchAvailability, initialSettings])
 
   function handleTimeSelect(time: string) {
+    setIsCustomTime(false)
+    setTimeInputResetKey((k) => k + 1) // resets the TimeInput display
     setForm((f) => ({ ...f, tour_time: time }))
   }
 
@@ -346,34 +402,81 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
                     month={selectedMonth}
                     selectedDateStr={form.tour_date}
                     availability={availability}
-                    onSelect={(dateStr) => setForm((f) => ({ ...f, tour_date: dateStr, tour_time: '' }))}
+                    onSelect={(dateStr) => {
+                      setForm((f) => ({ ...f, tour_date: dateStr, tour_time: '' }))
+                      setIsCustomTime(false)
+                      setTimeInputResetKey((k) => k + 1)
+                    }}
                   />
                 </div>
 
                 {form.tour_date && (
                   <div className="mt-4 pt-4 border-t border-gray-100">
-                    <p className="text-sm font-medium text-gray-700 mb-3">
-                      Beschikbare tijdstippen op{' '}
-                      <span className="text-brand-700">
-                        {format(parseISO(form.tour_date), 'EEEE d MMMM', { locale: nl })}
-                      </span>
-                    </p>
-                    <div className="flex gap-3 flex-wrap">
-                      {slotsForSelectedDate.map((time) => (
-                        <button
-                          key={time}
-                          onClick={() => handleTimeSelect(time)}
-                          className={`px-5 py-3 rounded-xl border-2 text-sm font-semibold transition-all ${
-                            form.tour_time === time
-                              ? 'bg-brand-600 border-brand-600 text-white shadow-sm'
-                              : 'border-gray-200 text-gray-700 hover:border-brand-600 hover:bg-brand-50 hover:text-brand-700'
-                          }`}
-                        >
-                          {time}
-                        </button>
-                      ))}
-                    </div>
-
+                    {slotsForSelectedDate.length > 0 ? (
+                      /* ── Situation 1: day has scheduled slots ── */
+                      <>
+                        <p className="text-sm font-medium text-gray-700 mb-3">
+                          Beschikbare tijdstippen op{' '}
+                          <span className="text-brand-700">
+                            {format(parseISO(form.tour_date), 'EEEE d MMMM', { locale: nl })}
+                          </span>
+                        </p>
+                        <div className="flex gap-2 sm:gap-3 flex-wrap items-center">
+                          {slotsForSelectedDate.map((time) => (
+                            <button
+                              key={time}
+                              type="button"
+                              onClick={() => handleTimeSelect(time)}
+                              className={`px-5 py-3 rounded-xl border-2 text-sm font-semibold transition-all ${
+                                !isCustomTime && form.tour_time === time
+                                  ? 'bg-brand-600 border-brand-600 text-white shadow-sm'
+                                  : 'border-gray-200 text-gray-700 hover:border-brand-600 hover:bg-brand-50 hover:text-brand-700'
+                              }`}
+                            >
+                              {time}
+                            </button>
+                          ))}
+                          <span className="text-sm font-medium text-gray-500 ml-1">Anders:</span>
+                          <TimeInput
+                            resetKey={timeInputResetKey}
+                            onValidTime={(t) => {
+                              if (t) {
+                                setIsCustomTime(true)
+                                setForm((f) => ({ ...f, tour_time: t }))
+                              } else {
+                                if (isCustomTime) {
+                                  setIsCustomTime(false)
+                                  setForm((f) => ({ ...f, tour_time: '' }))
+                                }
+                              }
+                            }}
+                          />
+                        </div>
+                        {isCustomTime && (
+                          <p className="mt-2 text-xs text-gray-500">
+                            Je hebt een ander tijdstip voorgesteld dan gebruikelijk voor onze rondleidingen. We zullen bekijken of dit mogelijk is.
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      /* ── Situation 2: day has no scheduled slots ── */
+                      <>
+                        <p className="text-sm text-gray-600 mb-3">
+                          Op{' '}
+                          <span className="text-brand-700 font-medium">
+                            {format(parseISO(form.tour_date), 'd MMMM', { locale: nl })}
+                          </span>{' '}
+                          zijn we <strong>niet open</strong>, past enkel dan? Stel een moment voor en we kijken of het past!
+                        </p>
+                        <TimeInput
+                          resetKey={timeInputResetKey}
+                          onValidTime={(t) => {
+                            setIsCustomTime(!!t)
+                            setForm((f) => ({ ...f, tour_time: t }))
+                          }}
+                        />
+                      </>
+                    )}
                   </div>
                 )}
               </>

@@ -15,16 +15,13 @@ export default function SettingsClient() {
     }
 
     function updateStyleWithColor(color: string) {
+      // Setting --primary-color-600 is enough: globals.css derives all brand-* variants
+      // via color-mix() from this single variable (50, 100, 600, 700, rings, borders…)
+      document.documentElement.style.setProperty('--primary-color-600', color)
+      // Also patch the DayPicker accent variable directly so the calendar updates too
       const el = ensureStyleTag()
-      document.documentElement.style.setProperty('--primary-color', color)
-      document.documentElement.style.setProperty('--brand-600', color)
       el.textContent = `
-        .bg-brand-600 { background-color: ${color} !important; }
-        .bg-brand-700 { background-color: ${color} !important; }
-        .text-brand-700 { color: ${color} !important; }
-        .border-brand-600 { border-color: ${color} !important; }
-        .rdp-day_available:not(.rdp-day_selected):not(.rdp-day_disabled) { color: ${color} !important; }
-        .rdp-day_available:not(.rdp-day_selected):not(.rdp-day_disabled)::after { background: ${color} !important; }
+        .rdp { --rdp-accent-color: ${color}; }
       `
     }
 

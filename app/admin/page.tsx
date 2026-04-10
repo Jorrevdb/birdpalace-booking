@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, Suspense } from 'react'
+import { useEffect, useState, useRef, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 
 type Worker = { id: string; name: string; email: string; google_calendar_id: string; created_at?: string }
@@ -91,10 +91,10 @@ function AdminPageInner() {
       ) : (
         <div style={{ marginTop: 16 }}>
           <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-            <button onClick={() => setTab('workers')} style={{ padding: '8px 12px', background: tab === 'workers' ? '#2d6a4f' : undefined, color: tab === 'workers' ? '#fff' : undefined }}>Workers</button>
-            <button onClick={() => setTab('bookings')} style={{ padding: '8px 12px', background: tab === 'bookings' ? '#2d6a4f' : undefined, color: tab === 'bookings' ? '#fff' : undefined }}>Bookings</button>
-            <button onClick={() => setTab('settings')} style={{ padding: '8px 12px', background: tab === 'settings' ? '#2d6a4f' : undefined, color: tab === 'settings' ? '#fff' : undefined }}>Settings</button>
-            <button onClick={() => setTab('calendar')} style={{ padding: '8px 12px', background: tab === 'calendar' ? '#2d6a4f' : undefined, color: tab === 'calendar' ? '#fff' : undefined }}>Calendar</button>
+            <button onClick={() => setTab('workers')} style={{ padding: '8px 12px', background: tab === 'workers' ? 'var(--primary-color-600)' : undefined, color: tab === 'workers' ? '#fff' : undefined }}>Workers</button>
+            <button onClick={() => setTab('bookings')} style={{ padding: '8px 12px', background: tab === 'bookings' ? 'var(--primary-color-600)' : undefined, color: tab === 'bookings' ? '#fff' : undefined }}>Bookings</button>
+            <button onClick={() => setTab('settings')} style={{ padding: '8px 12px', background: tab === 'settings' ? 'var(--primary-color-600)' : undefined, color: tab === 'settings' ? '#fff' : undefined }}>Settings</button>
+            <button onClick={() => setTab('calendar')} style={{ padding: '8px 12px', background: tab === 'calendar' ? 'var(--primary-color-600)' : undefined, color: tab === 'calendar' ? '#fff' : undefined }}>Calendar</button>
           </div>
 
           <p>Service account email (share worker calendars with this): <strong>{clientEmail ?? '—'}</strong></p>
@@ -240,6 +240,7 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
+  const deepLinkOpenedRef = useRef(false) // prevents re-opening after save
   const [activeBooking, setActiveBooking] = useState<any | null>(null)
   const [savingModal, setSavingModal] = useState(false)
   const [deletingModal, setDeletingModal] = useState(false)
@@ -270,7 +271,7 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
   }
 
   function statusStyle(status: string) {
-    if (status === 'approved') return { border: '1px solid #16a34a', color: '#166534', background: '#f0fdf4' }
+    if (status === 'approved') return { border: '1px solid var(--primary-color-600)', color: 'var(--primary-color-700)', background: 'color-mix(in srgb, var(--primary-color-600) 10%, white)' }
     if (status === 'denied') return { border: '1px solid #dc2626', color: '#991b1b', background: '#fef2f2' }
     return { border: '1px solid #d1d5db', color: '#374151', background: '#fff' }
   }
@@ -297,11 +298,14 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
   }
   useEffect(() => { fetchBookings() }, [])
 
-  // Auto-open a specific booking when ?booking=<id> is passed as a prop
+  // Auto-open a specific booking when ?booking=<id> is passed as a prop (only once)
   useEffect(() => {
-    if (!deepBookingId || !bookings.length) return
+    if (!deepBookingId || !bookings.length || deepLinkOpenedRef.current) return
     const target = bookings.find((b: any) => b.id === deepBookingId)
-    if (target) openModalFor(target)
+    if (target) {
+      deepLinkOpenedRef.current = true
+      openModalFor(target)
+    }
   }, [bookings, deepBookingId])
 
   function openModalFor(booking: any) {
@@ -562,7 +566,7 @@ function SettingsPanel({ password }: { password: string }) {
   const [contactEmail, setContactEmail] = useState('')
   const [tourDuration, setTourDuration] = useState('90')
   const [tourTimes, setTourTimes] = useState('11:00,13:00,15:00')
-  const [primaryColor, setPrimaryColor] = useState('#2d6a4f')
+  const [primaryColor, setPrimaryColor] = useState('var(--primary-color-600)')
   const [bookingFormFields, setBookingFormFields] = useState('')
   const [workerMessageAcceptedDefault, setWorkerMessageAcceptedDefault] = useState('Alles in orde. Tot ziens!')
   const [workerMessageDeniedDefault, setWorkerMessageDeniedDefault] = useState('Helaas kan ik niet beschikbaar zijn.')
@@ -580,7 +584,7 @@ function SettingsPanel({ password }: { password: string }) {
       setContactEmail(s.contact_email ?? '')
       setTourDuration(s.tour_duration_minutes ? String(s.tour_duration_minutes) : '90')
       setTourTimes(s.tour_times ?? '11:00,13:00,15:00')
-      setPrimaryColor(s.primary_color ?? '#2d6a4f')
+      setPrimaryColor(s.primary_color ?? 'var(--primary-color-600)')
       setBookingFormFields(s.booking_form_fields ? JSON.stringify(s.booking_form_fields) : '')
       setWorkerMessageAcceptedDefault(s.worker_message_accepted_default ?? 'Alles in orde. Tot ziens!')
       setWorkerMessageDeniedDefault(s.worker_message_denied_default ?? 'Helaas kan ik niet beschikbaar zijn.')
@@ -925,8 +929,8 @@ function CalendarPanel({ password }: { password: string }) {
   return (
     <div style={{ maxWidth: 640 }}>
       {status?.connected ? (
-        <div style={{ padding: 16, background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8 }}>
-          <p style={{ margin: 0, fontWeight: 600, color: '#15803d' }}>✓ Google Calendar verbonden</p>
+        <div style={{ padding: 16, background: 'color-mix(in srgb, var(--primary-color-600) 10%, white)', border: '1px solid color-mix(in srgb, var(--primary-color-600) 30%, white)', borderRadius: 8 }}>
+          <p style={{ margin: 0, fontWeight: 600, color: 'var(--primary-color-700)' }}>✓ Google Calendar verbonden</p>
           <p style={{ margin: '8px 0 0', color: '#374151' }}>
             <strong>Agenda:</strong> {status.calendar_name ?? status.calendar_id}
           </p>
@@ -936,7 +940,7 @@ function CalendarPanel({ password }: { password: string }) {
           <div style={{ marginTop: 16, display: 'flex', gap: 8 }}>
             <button
               onClick={openConnectPopup}
-              style={{ padding: '8px 14px', background: '#2d6a4f', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}
+              style={{ padding: '8px 14px', background: 'var(--primary-color-600)', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}
             >
               Andere agenda koppelen
             </button>
@@ -956,7 +960,7 @@ function CalendarPanel({ password }: { password: string }) {
           </p>
           <button
             onClick={openConnectPopup}
-            style={{ marginTop: 14, padding: '10px 20px', background: '#2d6a4f', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 600 }}
+            style={{ marginTop: 14, padding: '10px 20px', background: 'var(--primary-color-600)', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 600 }}
           >
             Google Calendar koppelen
           </button>
@@ -1061,7 +1065,7 @@ function CalendarPanel({ password }: { password: string }) {
           <button
             onClick={saveCalendarRules}
             disabled={savingRules}
-            style={{ padding: '10px 16px', background: '#2d6a4f', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 600 }}
+            style={{ padding: '10px 16px', background: 'var(--primary-color-600)', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 600 }}
           >
             {savingRules ? 'Opslaan…' : 'Kalenderregels opslaan'}
           </button>

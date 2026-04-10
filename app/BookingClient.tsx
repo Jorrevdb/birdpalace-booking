@@ -467,7 +467,7 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
   // ─────────────────────────────────────────
   if (step === 3) {
     const inputClass =
-      'w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition text-gray-900 placeholder:text-gray-400'
+      'w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-brand-600 focus:border-transparent transition text-gray-900 placeholder:text-gray-400'
 
     return (
       <div className="min-h-screen bg-gray-50 py-8 px-4">

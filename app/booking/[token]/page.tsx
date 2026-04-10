@@ -69,7 +69,7 @@ export default async function BookingStatusPage({
     },
     approved: {
       label: 'Bevestigd ✓',
-      color: 'bg-green-50 border-green-200 text-green-800',
+      color: 'bg-brand-50 border-brand-600 text-brand-700',
       icon: '✓',
       description: 'Jullie tour is bevestigd. We kijken ernaar uit jullie te verwelkomen!',
     },

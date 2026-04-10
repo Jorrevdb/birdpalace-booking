@@ -19,9 +19,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const rawColor = s?.primary_color ? String(s.primary_color) : '16a34a'
   const color = rawColor.startsWith('#') ? rawColor : `#${rawColor}`
 
-  // Keep runtime styling minimal and consistent with `app/globals.css` overrides.
-  // We only set CSS variables here; utility class overrides already reference these variables.
-  const runtimeCSS = `:root { --primary-color: ${color}; --primary-color-600: ${color}; --primary-color-700: ${color}; }`
+  // Only set --primary-color-600; globals.css derives all other variants (700, 50, 100)
+  // via color-mix() from this single variable. Do NOT set --primary-color-700 here —
+  // that would override the color-mix computation in globals.css.
+  const runtimeCSS = `:root { --primary-color-600: ${color}; }`
 
   return (
     <html lang="nl">

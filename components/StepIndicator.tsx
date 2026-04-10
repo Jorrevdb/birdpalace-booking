@@ -23,7 +23,7 @@ export function StepIndicator({ currentStep }: { currentStep: number }) {
               </div>
               <span
                 className={`mt-1 text-xs font-medium hidden sm:block ${
-                  isActive ? 'text-brand-700' : isDone ? 'text-brand-500' : 'text-gray-400'
+                  isActive ? 'text-brand-700' : isDone ? 'text-brand-600' : 'text-gray-400'
                 }`}
               >
                 {label}
@@ -32,7 +32,7 @@ export function StepIndicator({ currentStep }: { currentStep: number }) {
             {i < steps.length - 1 && (
               <div
                 className={`w-12 h-0.5 mx-1 mb-4 transition-all ${
-                  step < currentStep ? 'bg-brand-400' : 'bg-gray-200'
+                  step < currentStep ? 'bg-brand-600' : 'bg-gray-200'
                 }`}
               />
             )}

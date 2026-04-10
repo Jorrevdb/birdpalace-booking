@@ -12,7 +12,6 @@ function WorkerRespondInner({ token }: { token: string }) {
   const [message, setMessage] = useState('')
   const [result, setResult] = useState<string>('')
   const [settings, setSettings] = useState<Settings | null>(null)
-  const [selectedAction, setSelectedAction] = useState<'accept' | 'decline' | null>(action)
 
   useEffect(() => {
     // Fetch settings to get default messages
@@ -31,14 +30,9 @@ function WorkerRespondInner({ token }: { token: string }) {
   }, [])
 
   useEffect(() => {
-    // If action is in URL, initialize with default message
-    if (action) {
-      setSelectedAction(action)
-      if (action === 'accept' && settings?.worker_message_accepted_default) {
-        setMessage(settings.worker_message_accepted_default)
-      } else if (action === 'decline' && settings?.worker_message_denied_default) {
-        setMessage(settings.worker_message_denied_default)
-      }
+    // If accept action is in URL, initialize with default message
+    if (action === 'accept' && settings?.worker_message_accepted_default) {
+      setMessage(settings.worker_message_accepted_default)
     }
   }, [action, settings])
 
@@ -47,12 +41,8 @@ function WorkerRespondInner({ token }: { token: string }) {
     
     // Use default message only if message is truly empty
     let finalMessage = message
-    if (!finalMessage.trim()) {
-      if (action === 'accept' && settings?.worker_message_accepted_default) {
-        finalMessage = settings.worker_message_accepted_default
-      } else if (action === 'decline' && settings?.worker_message_denied_default) {
-        finalMessage = settings.worker_message_denied_default
-      }
+    if (!finalMessage.trim() && settings?.worker_message_accepted_default) {
+      finalMessage = settings.worker_message_accepted_default
     }
     
     try {
@@ -96,8 +86,8 @@ function WorkerRespondInner({ token }: { token: string }) {
 
   if (status === 'success') {
     return (
-      <div className="bg-green-50 border border-green-200 rounded-2xl p-6 text-center">
-        <p className="text-green-800 font-medium">{result}</p>
+      <div className="bg-brand-50 border border-brand-600 rounded-2xl p-6 text-center">
+        <p className="text-brand-700 font-medium">{result}</p>
       </div>
     )
   }
@@ -115,22 +105,15 @@ function WorkerRespondInner({ token }: { token: string }) {
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-4">
       <p className="text-gray-700">Kan jij deze tour begeleiden?</p>
 
-      {selectedAction && (
-        <div className={`p-3 rounded-lg text-sm font-medium ${selectedAction === 'accept' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
-          Je hebt gekozen: <strong>{selectedAction === 'accept' ? '✓ Accepteren' : '✗ Weigeren'}</strong> (klik opnieuw om te veranderen)
-        </div>
-      )}
-
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1.5">
-          Bericht {selectedAction ? '(optioneel)' : '(optioneel)'}
+          Bericht (optioneel)
         </label>
         <p className="text-xs text-gray-500 mb-2">
-          Accepteren: <em>{settings?.worker_message_accepted_default || 'Alles in orde. Tot ziens!'}</em> | 
-          Weigeren: <em>{settings?.worker_message_denied_default || 'Helaas kan ik niet beschikbaar zijn.'}</em>
+          Standaard: <em>{settings?.worker_message_accepted_default || 'Alles in orde. Tot ziens!'}</em>
         </p>
         <textarea
-          className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-brand-500 text-gray-900 placeholder:text-gray-400 resize-none"
+          className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-brand-600 text-gray-900 placeholder:text-gray-400 resize-none"
           rows={3}
           placeholder="Voeg een bericht toe voor de bezoeker (optioneel, anders wordt standaard bericht gebruikt)..."
           value={message}
@@ -138,47 +121,12 @@ function WorkerRespondInner({ token }: { token: string }) {
         />
       </div>
 
-      <div className="flex gap-3">
-        <button
-          onClick={() => {
-            setSelectedAction('accept')
-            if (!message && settings?.worker_message_accepted_default) {
-              setMessage(settings.worker_message_accepted_default)
-            }
-          }}
-          className={`flex-1 py-3 rounded-xl font-semibold transition-colors ${
-            selectedAction === 'accept'
-              ? 'bg-brand-600 text-white'
-              : 'bg-gray-100 text-gray-900 hover:bg-gray-200'
-          }`}
-        >
-          ✓ Ik accepteer
-        </button>
-        <button
-          onClick={() => {
-            setSelectedAction('decline')
-            if (!message && settings?.worker_message_denied_default) {
-              setMessage(settings.worker_message_denied_default)
-            }
-          }}
-          className={`flex-1 py-3 rounded-xl font-semibold transition-colors ${
-            selectedAction === 'decline'
-              ? 'bg-red-600 text-white'
-              : 'bg-gray-100 text-gray-900 hover:bg-gray-200'
-          }`}
-        >
-          ✗ Ik kan niet
-        </button>
-      </div>
-
-      {selectedAction && (
-        <button
-          onClick={() => handleRespond(selectedAction)}
-          className="w-full py-3 bg-gray-900 text-white rounded-xl font-semibold hover:bg-gray-800 transition-colors"
-        >
-          Bevestig {selectedAction === 'accept' ? 'acceptatie' : 'weigering'}
-        </button>
-      )}
+      <button
+        onClick={() => handleRespond('accept')}
+        className="w-full py-3 bg-brand-600 text-white rounded-xl font-semibold hover:bg-brand-700 transition-colors"
+      >
+        ✓ Ik accepteer de tour
+      </button>
     </div>
   )
 }

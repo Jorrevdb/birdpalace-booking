@@ -6,8 +6,6 @@ import { nl } from 'date-fns/locale'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
-// Temporary sender: use onboarding@resend.dev until birdpalace.be DNS is verified in Resend
-
 async function getFrom() {
   const s = await getSettings()
   const name = getSiteName(s.site_name)
@@ -59,14 +57,14 @@ function formatDate(dateStr: string) {
 }
 
 // ── Visitor: booking received ────────────────────©─────────────────────────────
-export async function sendBookingReceivedEmail(booking: Booking): Promise<void> {
+export async function sendBookingReceivedEmail(booking: Booking): Promise<{ ok: boolean; error?: unknown }> {
   try {
     const from = await getFrom()
     const s = await getSettings()
     const siteUrl = getSiteUrl((s as any).site_url)
     const contact = getContactEmail(s.contact_email)
     const brand = getBrandColor(s)
-    await resend.emails.send({
+    const result = await resend.emails.send({
       from,
       to: booking.visitor_email,
       subject: `Aanvraag ontvangen – ${formatDate(booking.tour_date)} om ${booking.tour_time}`,
@@ -85,8 +83,15 @@ export async function sendBookingReceivedEmail(booking: Booking): Promise<void> 
         </div>
       `,
     })
+    if (result.error) {
+      console.error('[email] sendBookingReceivedEmail – Resend error:', result.error)
+      return { ok: false, error: result.error }
+    }
+    console.log('[email] sendBookingReceivedEmail sent, id:', result.data?.id)
+    return { ok: true }
   } catch (err) {
-    console.error('[email] sendBookingReceivedEmail failed', err)
+    console.error('[email] sendBookingReceivedEmail threw:', err)
+    return { ok: false, error: err }
   }
 }
 
@@ -95,14 +100,14 @@ export async function sendWorkerNotificationEmail(
   booking: Booking,
   worker: Worker,
   responseToken: string
-): Promise<void> {
+): Promise<{ ok: boolean; error?: unknown }> {
   try {
     const from = await getFrom()
     const s = await getSettings()
     const siteUrl = getSiteUrl((s as any).site_url)
     const brand = getBrandColor(s)
     const respondUrl = `${siteUrl}/worker/respond/${responseToken}`
-    await resend.emails.send({
+    const result = await resend.emails.send({
       from,
       to: worker.email,
       subject: `Nieuw boekingsverzoek – ${formatDate(booking.tour_date)} om ${booking.tour_time}`,
@@ -125,8 +130,15 @@ export async function sendWorkerNotificationEmail(
         </div>
       `,
     })
+    if (result.error) {
+      console.error('[email] sendWorkerNotificationEmail – Resend error:', result.error)
+      return { ok: false, error: result.error }
+    }
+    console.log('[email] sendWorkerNotificationEmail sent to', worker.email, 'id:', result.data?.id)
+    return { ok: true }
   } catch (err) {
-    console.error('[email] sendWorkerNotificationEmail failed', err)
+    console.error('[email] sendWorkerNotificationEmail threw:', err)
+    return { ok: false, error: err }
   }
 }
 

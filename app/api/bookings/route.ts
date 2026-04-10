@@ -72,13 +72,19 @@ export async function POST(req: NextRequest) {
           .single()
 
         if (response?.respond_token) {
-          await sendWorkerNotificationEmail(booking, worker, response.respond_token)
+          const workerMailResult = await sendWorkerNotificationEmail(booking, worker, response.respond_token)
+          if (!workerMailResult.ok) {
+            console.error('[bookings POST] worker email FAILED for', worker.email, workerMailResult.error)
+          }
         }
       }
     }
 
     // Send confirmation email to visitor
-    await sendBookingReceivedEmail(booking)
+    const visitorMailResult = await sendBookingReceivedEmail(booking)
+    if (!visitorMailResult.ok) {
+      console.error('[bookings POST] visitor confirmation email FAILED:', visitorMailResult.error)
+    }
 
     return NextResponse.json({ booking }, { status: 201 })
   } catch (err) {

@@ -75,7 +75,7 @@ export default async function BookingStatusPage({
       description: 'Een van onze medewerkers zal je boeking zo snel mogelijk bevestigen.',
     },
     approved: {
-      label: 'Bevestigd ✓',
+      label: 'Bevestigd',
       color: 'bg-brand-50 border-brand-600 text-brand-700',
       icon: '✓',
       description: 'Jullie tour is bevestigd. We kijken ernaar uit jullie te verwelkomen!',
@@ -154,9 +154,10 @@ export default async function BookingStatusPage({
               href={MAPS_URL}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center justify-center gap-2 w-full px-5 py-3 bg-white border-2 border-[#1a73e8] text-[#1a73e8] rounded-xl font-semibold hover:bg-[#e8f0fe] transition-colors text-sm"
+              className="flex items-center justify-center gap-2.5 w-full px-5 py-3 bg-white border-2 border-[#1a73e8] text-[#1a73e8] rounded-xl font-semibold hover:bg-[#e8f0fe] transition-colors text-sm"
             >
-              📍 Bekijk op Google Maps
+              <img src="/icons/googlemaps.svg" alt="" className="w-5 h-5" />
+              Bekijk op Google Maps
             </a>
 
             {/* Add to calendar */}
@@ -166,25 +167,25 @@ export default async function BookingStatusPage({
                 href={gcalUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex flex-col items-center gap-1 px-3 py-3 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors text-xs font-medium text-gray-700"
+                className="flex flex-col items-center gap-1.5 px-3 py-3 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors text-xs font-medium text-gray-700"
               >
-                <span className="text-xl">📅</span>
+                <img src="/icons/googlecalendar.svg" alt="Google Calendar" className="w-6 h-6" />
                 Google
               </a>
               <a
                 href={`/api/bookings/${token}/ics`}
-                className="flex flex-col items-center gap-1 px-3 py-3 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors text-xs font-medium text-gray-700"
+                className="flex flex-col items-center gap-1.5 px-3 py-3 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors text-xs font-medium text-gray-700"
               >
-                <span className="text-xl">🍎</span>
+                <img src="/icons/apple.svg" alt="Apple Calendar" className="w-6 h-6" />
                 Apple
               </a>
               <a
                 href={outlookUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex flex-col items-center gap-1 px-3 py-3 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors text-xs font-medium text-gray-700"
+                className="flex flex-col items-center gap-1.5 px-3 py-3 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors text-xs font-medium text-gray-700"
               >
-                <span className="text-xl">📧</span>
+                <img src="/icons/outlook.svg" alt="Outlook" className="w-6 h-6" />
                 Outlook
               </a>
             </div>

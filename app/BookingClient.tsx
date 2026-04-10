@@ -548,13 +548,13 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
             />
 
             {/* Total count indicator */}
-            <div className="flex items-center justify-between px-1 pt-2 border-t border-gray-100 text-sm text-gray-500">
+            <div className="flex items-center justify-between px-1 pt-2 pb-2 border-t border-gray-100 text-sm text-gray-500">
               <span>Totaal aantal personen</span>
               <span className="font-semibold text-gray-900">{form.adults_count + form.children_count}</span>
             </div>
 
             {/* Penguin feeding — decided on-site, no number needed */}
-            <div className="flex items-start gap-3 pt-4">
+            <div className="flex items-start gap-3 pt-6 border-t border-gray-100">
               <span className="text-2xl leading-none mt-0.5">🐧</span>
               <div>
                 <p className="text-sm font-medium text-gray-800">Pinguïns voeren</p>

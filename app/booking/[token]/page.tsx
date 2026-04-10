@@ -61,6 +61,17 @@ export default async function BookingStatusPage({
 
   const dateStr = format(parseISO(booking.tour_date), 'EEEE d MMMM yyyy', { locale: nl })
 
+  // ── Calendar & Maps links (only used when approved) ──────────────────────────
+  const MAPS_URL = 'https://maps.app.goo.gl/WXgroKXYJiGK95QLA'
+
+  const [y, mo, d] = booking.tour_date.split('-')
+  const [hh, mm] = booking.tour_time.split(':')
+  const endHh = String(parseInt(hh, 10) + 1).padStart(2, '0')
+  const gcalStart = `${y}${mo}${d}T${hh}${mm}00`
+  const gcalEnd   = `${y}${mo}${d}T${endHh}${mm}00`
+  const gcalUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=Tour+Bird+Palace&dates=${gcalStart}%2F${gcalEnd}&details=Rondleiding+bij+Bird+Palace&location=Bird+Palace%2C+Koerheide+1%2C+3900+Pelt&ctz=Europe%2FBrussels`
+  const outlookUrl = `https://outlook.live.com/calendar/0/deeplink/compose?subject=Tour+Bird+Palace&startdt=${booking.tour_date}T${booking.tour_time}:00&enddt=${booking.tour_date}T${endHh}:${mm}:00&body=Rondleiding+bij+Bird+Palace&location=Bird+Palace%2C+Koerheide+1%2C+3900+Pelt`
+
   const statusConfig = {
     pending: {
       label: 'Wacht op bevestiging',
@@ -140,6 +151,50 @@ export default async function BookingStatusPage({
             <span className="font-medium text-gray-900">{booking.visitor_phone}</span>
           </div>
         </div>
+
+        {booking.status === 'approved' && (
+          <div className="mt-4 space-y-3">
+            {/* Google Maps */}
+            <a
+              href={MAPS_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 w-full px-5 py-3 bg-[#1a73e8] text-white rounded-xl font-semibold hover:bg-[#1558b0] transition-colors text-sm"
+            >
+              📍 Bekijk op Google Maps
+            </a>
+
+            {/* Add to calendar */}
+            <p className="text-xs text-center text-gray-400 font-medium uppercase tracking-wide">Toevoegen aan agenda</p>
+            <div className="grid grid-cols-3 gap-2">
+              <a
+                href={gcalUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex flex-col items-center gap-1 px-3 py-3 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors text-xs font-medium text-gray-700"
+              >
+                <span className="text-xl">📅</span>
+                Google
+              </a>
+              <a
+                href={`/api/bookings/${token}/ics`}
+                className="flex flex-col items-center gap-1 px-3 py-3 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors text-xs font-medium text-gray-700"
+              >
+                <span className="text-xl">🍎</span>
+                Apple
+              </a>
+              <a
+                href={outlookUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex flex-col items-center gap-1 px-3 py-3 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors text-xs font-medium text-gray-700"
+              >
+                <span className="text-xl">📧</span>
+                Outlook
+              </a>
+            </div>
+          </div>
+        )}
 
         {booking.status === 'denied' && (
           <div className="mt-4 text-center">

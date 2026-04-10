@@ -6,6 +6,12 @@ import { nl } from 'date-fns/locale'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
+const MAPS_URL = 'https://maps.app.goo.gl/WXgroKXYJiGK95QLA'
+
+function mapsButton(): string {
+  return `<a href="${MAPS_URL}" style="display:inline-block;padding:12px 24px;background:#1a73e8;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;font-size:14px">📍 Bekijk op Google Maps</a>`
+}
+
 async function getFrom() {
   const s = await getSettings()
   const name = getSiteName(s.site_name)
@@ -167,7 +173,10 @@ export async function sendBookingApprovedEmail(
             ${peopleRows(booking)}
           </table>
           ${booking.worker_message ? `<blockquote style="border-left:4px solid ${brand};margin:0;padding:12px 16px;background:${brandLight};border-radius:0 8px 8px 0">${booking.worker_message}</blockquote>` : ''}
-          <a href="${siteUrl}/booking/${booking.edit_token}" style="display:inline-block;margin-top:24px;padding:12px 24px;background:${brand};color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Bekijk boeking</a>
+          <div style="margin-top:24px;display:flex;gap:12px;flex-wrap:wrap">
+            <a href="${siteUrl}/booking/${booking.edit_token}" style="display:inline-block;padding:12px 24px;background:${brand};color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Bekijk boeking</a>
+            ${mapsButton()}
+          </div>
         </div>
       `,
     })
@@ -239,7 +248,10 @@ export async function sendBookingUpdatedEmail(booking: Booking): Promise<void> {
             ${peopleRows(booking)}
           </table>
           ${booking.worker_message ? `<blockquote style="border-left:4px solid ${brand};margin:0;padding:12px 16px;background:${brandLight};border-radius:0 8px 8px 0">${booking.worker_message}</blockquote>` : ''}
-          <a href="${siteUrl}/booking/${booking.edit_token}" style="display:inline-block;margin-top:24px;padding:12px 24px;background:${brand};color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Bekijk boeking</a>
+          <div style="margin-top:24px;display:flex;gap:12px;flex-wrap:wrap">
+            <a href="${siteUrl}/booking/${booking.edit_token}" style="display:inline-block;padding:12px 24px;background:${brand};color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Bekijk boeking</a>
+            ${booking.status === 'approved' ? mapsButton() : ''}
+          </div>
         </div>
       `,
     })

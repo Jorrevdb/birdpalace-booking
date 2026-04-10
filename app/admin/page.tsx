@@ -667,11 +667,8 @@ function SettingsPanel({ password }: { password: string }) {
           <label style={{ display: 'block', marginTop: 8 }}>Tour duration (minutes)
             <input value={tourDuration} onChange={(e) => setTourDuration(e.target.value)} style={{ display: 'block', marginTop: 6 }} />
           </label>
-          <label style={{ display: 'block', marginTop: 8 }}>Tour times (comma-separated)
-            <input value={tourTimes} onChange={(e) => setTourTimes(e.target.value)} style={{ display: 'block', marginTop: 6, width: '100%' }} />
-          </label>
           <label style={{ display: 'block', marginTop: 8 }}>Primary color
-            <input value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} style={{ display: 'block', marginTop: 6 }} />
+            <input type="color" value={primaryColor.startsWith('#') ? primaryColor : '#6366f1'} onChange={(e) => setPrimaryColor(e.target.value)} style={{ display: 'block', marginTop: 6, width: 48, height: 36, padding: 2, cursor: 'pointer' }} />
           </label>
           <label style={{ display: 'block', marginTop: 8 }}>Booking form fields (JSON)
             <textarea value={bookingFormFields} onChange={(e) => setBookingFormFields(e.target.value)} style={{ display: 'block', marginTop: 6, width: '100%' }} placeholder='e.g. [{"id":"children_count","label":"Children"}]' />
@@ -679,9 +676,6 @@ function SettingsPanel({ password }: { password: string }) {
           <h3 style={{ marginTop: 20, marginBottom: 8 }}>Default worker messages</h3>
           <label style={{ display: 'block', marginTop: 8 }}>Default message when accepting
             <textarea value={workerMessageAcceptedDefault} onChange={(e) => setWorkerMessageAcceptedDefault(e.target.value)} style={{ display: 'block', marginTop: 6, width: '100%', minHeight: 60 }} placeholder='Default message for accepted bookings' />
-          </label>
-          <label style={{ display: 'block', marginTop: 8 }}>Default message when denying
-            <textarea value={workerMessageDeniedDefault} onChange={(e) => setWorkerMessageDeniedDefault(e.target.value)} style={{ display: 'block', marginTop: 6, width: '100%', minHeight: 60 }} placeholder='Default message for denied bookings' />
           </label>
           <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
             <button onClick={save} style={{ padding: '8px 12px' }}>Save settings</button>

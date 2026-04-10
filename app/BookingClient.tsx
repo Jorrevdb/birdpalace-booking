@@ -148,12 +148,12 @@ type Step = 1 | 2 | 3 | 'done'
 interface BookingForm {
   tour_date: string
   tour_time: string
-  total_people: number
+  adults_count: number
   children_count: number
-  penguin_feeding_count: number
   visitor_name: string
   visitor_email: string
   visitor_phone: string
+  visitor_message: string
 }
 
 export default function BookingClient({ initialSiteTitle, initialSettings }: { initialSiteTitle?: string; initialSettings?: Settings }) {
@@ -169,12 +169,12 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
   const [form, setForm] = useState<BookingForm>({
     tour_date: '',
     tour_time: '',
-    total_people: 1,
+    adults_count: 1,
     children_count: 0,
-    penguin_feeding_count: 0,
     visitor_name: '',
     visitor_email: '',
     visitor_phone: '',
+    visitor_message: '',
   })
 
   const fetchAvailability = useCallback(async (month: Date) => {
@@ -202,9 +202,8 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
         if (initialSettings.primary_color) {
           const raw = String(initialSettings.primary_color)
           const color = raw.startsWith('#') ? raw : `#${raw}`
-          document.documentElement.style.setProperty('--primary-color', color)
+          // Only set --primary-color-600; globals.css derives 700/50/100 via color-mix()
           document.documentElement.style.setProperty('--primary-color-600', color)
-          document.documentElement.style.setProperty('--primary-color-700', color)
         }
       } catch (err) {}
     }
@@ -262,10 +261,15 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
     setError('')
 
     try {
+      const payload = {
+        ...form,
+        total_people: form.adults_count + form.children_count,
+        visitor_message: form.visitor_message.trim() || null,
+      }
       const res = await fetch('/api/bookings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       })
 
       const data = await res.json()
@@ -410,26 +414,27 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
             </div>
 
             <Counter
-              label="Totaal aantal personen"
-              value={form.total_people}
+              label="Aantal volwassenen"
+              description="Ouder dan 12 jaar"
+              value={form.adults_count}
               min={1}
               max={50}
-              onChange={(v) =>
-                setForm((f) => ({
-                  ...f,
-                  total_people: v,
-                  children_count: Math.min(f.children_count, v),
-                }))
-              }
+              onChange={(v) => setForm((f) => ({ ...f, adults_count: v }))}
             />
             <Counter
-              label="Waarvan kinderen"
-              description="Jonger dan 12 jaar"
+              label="Aantal kinderen"
+              description="-12 jaar"
               value={form.children_count}
               min={0}
-              max={form.total_people}
+              max={50}
               onChange={(v) => setForm((f) => ({ ...f, children_count: v }))}
             />
+
+            {/* Total count indicator */}
+            <div className="flex items-center justify-between px-1 pt-2 border-t border-gray-100 text-sm text-gray-500">
+              <span>Totaal aantal personen</span>
+              <span className="font-semibold text-gray-900">{form.adults_count + form.children_count}</span>
+            </div>
 
             {/* Penguin feeding — decided on-site, no number needed */}
             <div className="flex items-start gap-3 pt-4">
@@ -440,6 +445,20 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
                   Interesse? Dat beslis je ter plaatse. De gids regelt alles op het moment zelf — geen zorgen!
                 </p>
               </div>
+            </div>
+
+            {/* Optional visitor message */}
+            <div className="pt-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Opmerking <span className="font-normal text-gray-400">(optioneel)</span>
+              </label>
+              <textarea
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-brand-600 text-gray-900 placeholder:text-gray-400 resize-none text-sm"
+                rows={3}
+                placeholder="Bijv. allergieën, rolstoelgebruiker, speciale wensen…"
+                value={form.visitor_message}
+                onChange={(e) => setForm((f) => ({ ...f, visitor_message: e.target.value }))}
+              />
             </div>
           </div>
 
@@ -484,8 +503,15 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
                   {format(parseISO(form.tour_date), 'EEEE d MMMM yyyy', { locale: nl })} om {form.tour_time}
                 </p>
                 <p>
-                  <span className="font-medium">Personen:</span> {form.total_people} ({form.children_count} kinderen)
+                  <span className="font-medium">Volwassenen:</span> {form.adults_count} &nbsp;·&nbsp;
+                  <span className="font-medium">Kinderen:</span> {form.children_count} &nbsp;·&nbsp;
+                  <span className="font-medium">Totaal:</span> {form.adults_count + form.children_count}
                 </p>
+                {form.visitor_message.trim() && (
+                  <p>
+                    <span className="font-medium">Opmerking:</span> {form.visitor_message}
+                  </p>
+                )}
               </div>
 
               <div>
@@ -597,7 +623,9 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
               {form.tour_date && format(parseISO(form.tour_date), 'EEEE d MMMM yyyy', { locale: nl })} om {form.tour_time}
             </p>
             <p>
-              <span className="font-medium">Personen:</span> {form.total_people} ({form.children_count} kinderen)
+              <span className="font-medium">Volwassenen:</span> {form.adults_count} &nbsp;·&nbsp;
+              <span className="font-medium">Kinderen:</span> {form.children_count} &nbsp;·&nbsp;
+              <span className="font-medium">Totaal:</span> {form.adults_count + form.children_count}
             </p>
           </div>
 

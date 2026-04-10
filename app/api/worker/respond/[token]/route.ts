@@ -71,8 +71,14 @@ export async function POST(
       // Send approval email to visitor
       await sendBookingApprovedEmail({ ...booking, worker_message: message ?? null }, worker.name)
 
-      // Create event in the connected Google Calendar (fails silently)
-      await createBookingEvent({ ...booking, worker_message: message ?? null })
+      // Create event in the connected Google Calendar (fails silently), store event ID
+      const calEventId = await createBookingEvent({ ...booking, worker_message: message ?? null })
+      if (calEventId) {
+        await supabaseAdmin
+          .from('bookings')
+          .update({ calendar_event_id: calEventId })
+          .eq('id', booking.id)
+      }
 
       // Notify other workers that the slot is taken
       const { data: otherResponses } = await supabaseAdmin

@@ -14,6 +14,22 @@ async function getFrom() {
   return `${name} <onboarding@birdpalace.be>`
 }
 
+/** Build the shared "people" table rows (adults / children / total) for email templates. */
+function peopleRows(booking: Booking): string {
+  const adults = booking.total_people - (booking.children_count ?? 0)
+  return `
+    <tr><td style="padding:8px 0;color:#666;width:160px">Volwassenen</td><td style="padding:8px 0;font-weight:600">${adults}</td></tr>
+    <tr><td style="padding:8px 0;color:#666">Kinderen (-12j)</td><td style="padding:8px 0;font-weight:600">${booking.children_count ?? 0}</td></tr>
+    <tr><td style="padding:8px 0;color:#666">Totaal</td><td style="padding:8px 0;font-weight:600">${booking.total_people}</td></tr>
+  `
+}
+
+/** Optional visitor message block. */
+function visitorMessageBlock(booking: Booking): string {
+  if (!booking.visitor_message) return ''
+  return `<tr><td style="padding:8px 0;color:#666;vertical-align:top">Opmerking</td><td style="padding:8px 0;font-weight:600">${booking.visitor_message}</td></tr>`
+}
+
 function getBrandColor(s: Awaited<ReturnType<typeof getSettings>>) {
   const raw = s?.primary_color ?? '2d6a4f'
   const hex = raw.startsWith('#') ? raw : `#${raw}`
@@ -61,7 +77,8 @@ export async function sendBookingReceivedEmail(booking: Booking): Promise<void> 
           <table style="width:100%;border-collapse:collapse;margin:24px 0">
             <tr><td style="padding:8px 0;color:#666;width:160px">Datum</td><td style="padding:8px 0;font-weight:600">${formatDate(booking.tour_date)}</td></tr>
             <tr><td style="padding:8px 0;color:#666">Tijdslot</td><td style="padding:8px 0;font-weight:600">${booking.tour_time}</td></tr>
-            <tr><td style="padding:8px 0;color:#666">Personen</td><td style="padding:8px 0;font-weight:600">${booking.total_people} (${booking.children_count} kinderen)</td></tr>
+            ${peopleRows(booking)}
+            ${visitorMessageBlock(booking)}
           </table>
           <a href="${siteUrl}/booking/${booking.edit_token}" style="display:inline-block;padding:12px 24px;background:${brand};color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Bekijk boekingsstatus</a>
           <p style="margin-top:32px;color:#888;font-size:13px">Vragen? Mail ons op <a href="mailto:${contact}">${contact}</a></p>
@@ -96,9 +113,10 @@ export async function sendWorkerNotificationEmail(
           <table style="width:100%;border-collapse:collapse;margin:24px 0">
             <tr><td style="padding:8px 0;color:#666;width:160px">Datum</td><td style="padding:8px 0;font-weight:600">${formatDate(booking.tour_date)}</td></tr>
             <tr><td style="padding:8px 0;color:#666">Tijdslot</td><td style="padding:8px 0;font-weight:600">${booking.tour_time}</td></tr>
-            <tr><td style="padding:8px 0;color:#666">Personen</td><td style="padding:8px 0;font-weight:600">${booking.total_people} (${booking.children_count} kinderen)</td></tr>
+            ${peopleRows(booking)}
             <tr><td style="padding:8px 0;color:#666">Naam bezoeker</td><td style="padding:8px 0;font-weight:600">${booking.visitor_name}</td></tr>
             <tr><td style="padding:8px 0;color:#666">Telefoon</td><td style="padding:8px 0;font-weight:600">${booking.visitor_phone}</td></tr>
+            ${visitorMessageBlock(booking)}
           </table>
           <div style="margin:24px 0">
             <a href="${respondUrl}?action=accept" style="display:inline-block;padding:12px 28px;background:${brand};color:#fff;text-decoration:none;border-radius:8px;font-weight:600;margin-right:16px;margin-bottom:8px">✓ Ik accepteer</a>
@@ -134,7 +152,7 @@ export async function sendBookingApprovedEmail(
           <table style="width:100%;border-collapse:collapse;margin:24px 0">
             <tr><td style="padding:8px 0;color:#666;width:160px">Datum</td><td style="padding:8px 0;font-weight:600">${formatDate(booking.tour_date)}</td></tr>
             <tr><td style="padding:8px 0;color:#666">Tijdslot</td><td style="padding:8px 0;font-weight:600">${booking.tour_time}</td></tr>
-            <tr><td style="padding:8px 0;color:#666">Personen</td><td style="padding:8px 0;font-weight:600">${booking.total_people} (${booking.children_count} kinderen)</td></tr>
+            ${peopleRows(booking)}
           </table>
           ${booking.worker_message ? `<blockquote style="border-left:4px solid ${brand};margin:0;padding:12px 16px;background:${brandLight};border-radius:0 8px 8px 0">${booking.worker_message}</blockquote>` : ''}
           <a href="${siteUrl}/booking/${booking.edit_token}" style="display:inline-block;margin-top:24px;padding:12px 24px;background:${brand};color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Bekijk boeking</a>
@@ -206,7 +224,7 @@ export async function sendBookingUpdatedEmail(booking: Booking): Promise<void> {
             <tr><td style="padding:8px 0;color:#666;width:160px">Datum</td><td style="padding:8px 0;font-weight:600">${formatDate(booking.tour_date)}</td></tr>
             <tr><td style="padding:8px 0;color:#666">Tijdslot</td><td style="padding:8px 0;font-weight:600">${booking.tour_time}</td></tr>
             <tr><td style="padding:8px 0;color:#666">Status</td><td style="padding:8px 0;font-weight:600">${statusLabel}</td></tr>
-            <tr><td style="padding:8px 0;color:#666">Personen</td><td style="padding:8px 0;font-weight:600">${booking.total_people} (${booking.children_count} kinderen)</td></tr>
+            ${peopleRows(booking)}
           </table>
           ${booking.worker_message ? `<blockquote style="border-left:4px solid ${brand};margin:0;padding:12px 16px;background:${brandLight};border-radius:0 8px 8px 0">${booking.worker_message}</blockquote>` : ''}
           <a href="${siteUrl}/booking/${booking.edit_token}" style="display:inline-block;margin-top:24px;padding:12px 24px;background:${brand};color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Bekijk boeking</a>

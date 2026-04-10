@@ -255,6 +255,7 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
   const [formAdults, setFormAdults] = useState(1)
   const [formChildren, setFormChildren] = useState(0)
   const [formWorkerMessage, setFormWorkerMessage] = useState('')
+  const [formVisitorMessage, setFormVisitorMessage] = useState('')
 
   function formatNlDate(isoDate: string) {
     try {
@@ -316,9 +317,13 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
     setFormName(booking.visitor_name || '')
     setFormEmail(booking.visitor_email || '')
     setFormPhone(booking.visitor_phone || '')
-    setFormAdults(Number(booking.total_people || 1))
-    setFormChildren(Number(booking.children_count || 0))
+    // formAdults = adults only (total minus children)
+    const children = Number(booking.children_count || 0)
+    const total = Number(booking.total_people || 1)
+    setFormAdults(Math.max(1, total - children))
+    setFormChildren(children)
     setFormWorkerMessage(booking.worker_message || '')
+    setFormVisitorMessage(booking.visitor_message || '')
     setNotifyVisitor(true)
     setModalOpen(true)
   }
@@ -346,6 +351,8 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
     if (!activeBooking) return
     setSavingModal(true)
     try {
+      const adults = Number(formAdults || 1)
+      const children = Number(formChildren || 0)
       const payload = {
         password,
         updates: {
@@ -355,8 +362,8 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
           visitor_name: formName,
           visitor_email: formEmail,
           visitor_phone: formPhone,
-          total_people: Number(formAdults || 1),
-          children_count: Number(formChildren || 0),
+          total_people: adults + children,
+          children_count: children,
           worker_message: formWorkerMessage || null,
         },
         notify: notifyVisitor,
@@ -421,7 +428,7 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
               <th style={{ textAlign: 'left', padding: '12px 8px', borderBottom: '1px solid #e5e7eb' }}>Datum</th>
               <th style={{ textAlign: 'left', padding: '12px 8px', borderBottom: '1px solid #e5e7eb' }}>Tijd</th>
               <th style={{ textAlign: 'left', padding: '12px 8px', borderBottom: '1px solid #e5e7eb' }}>Name</th>
-              <th style={{ textAlign: 'left', padding: '12px 8px', borderBottom: '1px solid #e5e7eb' }}>Totaal Personen</th>
+              <th style={{ textAlign: 'left', padding: '12px 8px', borderBottom: '1px solid #e5e7eb' }}>Personen</th>
               <th style={{ textAlign: 'left', padding: '12px 8px', borderBottom: '1px solid #e5e7eb' }}>Status</th>
               <th style={{ textAlign: 'right', padding: '12px 8px', borderBottom: '1px solid #e5e7eb' }}></th>
             </tr>
@@ -432,7 +439,13 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
                 <td style={{ padding: '16px 8px', borderBottom: '1px solid #f3f4f6' }}>{formatNlDate(b.tour_date)}</td>
                 <td style={{ padding: '16px 8px', borderBottom: '1px solid #f3f4f6' }}>{b.tour_time}</td>
                 <td style={{ padding: '16px 8px', borderBottom: '1px solid #f3f4f6' }}>{b.visitor_name}</td>
-                <td style={{ padding: '16px 8px', borderBottom: '1px solid #f3f4f6' }}>{b.total_people}</td>
+                <td style={{ padding: '16px 8px', borderBottom: '1px solid #f3f4f6', fontSize: 14 }}>
+                  <span title="volwassenen">{b.total_people - (b.children_count ?? 0)}v</span>
+                  {' + '}
+                  <span title="kinderen">{b.children_count ?? 0}k</span>
+                  {' = '}
+                  <strong>{b.total_people}</strong>
+                </td>
                 <td style={{ padding: '16px 8px', borderBottom: '1px solid #f3f4f6' }}>
                   <span
                     style={{
@@ -520,17 +533,27 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
                     <label style={{ display: 'block' }}>
-                      Volwassenen
+                      Volwassenen (+12j)
                       <input type="number" min={1} value={formAdults} onChange={(e) => setFormAdults(Number(e.target.value || 1))} style={{ display: 'block', marginTop: 6, width: '100%', padding: 12, borderRadius: 12, border: '1px solid #d1d5db' }} />
                     </label>
                     <label style={{ display: 'block' }}>
-                      Kinderen
+                      Kinderen (-12j)
                       <input type="number" min={0} value={formChildren} onChange={(e) => setFormChildren(Number(e.target.value || 0))} style={{ display: 'block', marginTop: 6, width: '100%', padding: 12, borderRadius: 12, border: '1px solid #d1d5db' }} />
                     </label>
                   </div>
+                  <p style={{ margin: '6px 0 0', fontSize: 13, color: '#6b7280' }}>
+                    Totaal: <strong>{formAdults + formChildren} personen</strong>
+                  </p>
+
+                  {formVisitorMessage && (
+                    <div style={{ marginTop: 12 }}>
+                      <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#6b7280' }}>Opmerking bezoeker</p>
+                      <p style={{ margin: '6px 0 0', padding: 12, borderRadius: 12, background: '#f9fafb', border: '1px solid #e5e7eb', fontSize: 14 }}>{formVisitorMessage}</p>
+                    </div>
+                  )}
 
                   <label style={{ display: 'block', marginTop: 12 }}>
-                    Bericht (optioneel)
+                    Bericht aan bezoeker (optioneel)
                     <textarea value={formWorkerMessage} onChange={(e) => setFormWorkerMessage(e.target.value)} style={{ display: 'block', marginTop: 6, width: '100%', minHeight: 80, padding: 12, borderRadius: 12, border: '1px solid #d1d5db' }} />
                   </label>
 

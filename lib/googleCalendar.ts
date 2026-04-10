@@ -473,11 +473,54 @@ export async function getAvailableSlotsForRange(
   return availability
 }
 
+function buildEventBody(booking: Booking, start: Date, end: Date) {
+  const adults = booking.total_people - (booking.children_count ?? 0)
+  const descLines = [
+    `Bezoeker: ${booking.visitor_name}`,
+    `Email: ${booking.visitor_email}`,
+    `Tel: ${booking.visitor_phone}`,
+    `Volwassenen: ${adults} | Kinderen: ${booking.children_count ?? 0} | Totaal: ${booking.total_people}`,
+  ]
+  if (booking.visitor_message) descLines.push(`Opmerking: ${booking.visitor_message}`)
+  return {
+    summary: `Tour: ${booking.visitor_name} (${adults}v + ${booking.children_count ?? 0}k)`,
+    description: descLines.join('\n'),
+    start: { dateTime: start.toISOString() },
+    end: { dateTime: end.toISOString() },
+  }
+}
+
 /**
  * Create a calendar event when a booking is confirmed.
+ * Returns the Google Calendar event ID, or null on failure.
  * Fails silently — a calendar error must never break the booking flow.
  */
-export async function createBookingEvent(booking: Booking): Promise<void> {
+export async function createBookingEvent(booking: Booking): Promise<string | null> {
+  try {
+    const ctx = await getCalendarClient()
+    if (!ctx) return null
+
+    const { cal, conn } = ctx
+    const settings = await getSettings()
+    const duration = getTourDuration(settings.tour_duration_minutes)
+    const { start, end } = makeSlotRange(booking.tour_date, booking.tour_time, duration)
+
+    const res = await cal.events.insert({
+      calendarId: conn.calendar_id,
+      requestBody: buildEventBody(booking, start, end),
+    })
+    return res.data.id ?? null
+  } catch (err) {
+    console.error('[googleCalendar] createBookingEvent failed', err)
+    return null
+  }
+}
+
+/**
+ * Update an existing calendar event (e.g. when date/time changes in admin).
+ * Fails silently.
+ */
+export async function updateBookingEvent(booking: Booking, calendarEventId: string): Promise<void> {
   try {
     const ctx = await getCalendarClient()
     if (!ctx) return
@@ -487,20 +530,31 @@ export async function createBookingEvent(booking: Booking): Promise<void> {
     const duration = getTourDuration(settings.tour_duration_minutes)
     const { start, end } = makeSlotRange(booking.tour_date, booking.tour_time, duration)
 
-    await cal.events.insert({
+    await cal.events.update({
       calendarId: conn.calendar_id,
-      requestBody: {
-        summary: `Tour: ${booking.visitor_name} (${booking.total_people} pers.)`,
-        description: [
-          `Bezoeker: ${booking.visitor_name}`,
-          `Email: ${booking.visitor_email}`,
-          `Tel: ${booking.visitor_phone}`,
-        ].join('\n'),
-        start: { dateTime: start.toISOString() },
-        end: { dateTime: end.toISOString() },
-      },
+      eventId: calendarEventId,
+      requestBody: buildEventBody(booking, start, end),
     })
   } catch (err) {
-    console.error('[googleCalendar] createBookingEvent failed', err)
+    console.error('[googleCalendar] updateBookingEvent failed', err)
+  }
+}
+
+/**
+ * Delete a calendar event (e.g. when booking is cancelled or denied).
+ * Fails silently.
+ */
+export async function deleteBookingEvent(calendarEventId: string): Promise<void> {
+  try {
+    const ctx = await getCalendarClient()
+    if (!ctx) return
+
+    const { cal, conn } = ctx
+    await cal.events.delete({
+      calendarId: conn.calendar_id,
+      eventId: calendarEventId,
+    })
+  } catch (err) {
+    console.error('[googleCalendar] deleteBookingEvent failed', err)
   }
 }

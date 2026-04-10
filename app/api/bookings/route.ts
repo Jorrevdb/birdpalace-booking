@@ -12,10 +12,10 @@ export async function POST(req: NextRequest) {
       tour_time,
       total_people,
       children_count,
-      penguin_feeding_count,
       visitor_name,
       visitor_email,
       visitor_phone,
+      visitor_message,
     } = body
 
     if (!tour_date || !tour_time || !total_people || !visitor_name || !visitor_email || !visitor_phone) {
@@ -30,10 +30,10 @@ export async function POST(req: NextRequest) {
         tour_time,
         total_people,
         children_count: children_count ?? 0,
-        penguin_feeding_count: penguin_feeding_count ?? 0,
         visitor_name,
         visitor_email,
         visitor_phone,
+        visitor_message: visitor_message ?? null,
         status: 'pending',
       })
       .select()

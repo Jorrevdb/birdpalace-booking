@@ -27,13 +27,19 @@ CREATE TABLE IF NOT EXISTS bookings (
   visitor_name          TEXT NOT NULL,
   visitor_email         TEXT NOT NULL,
   visitor_phone         TEXT NOT NULL,
+  visitor_message       TEXT,               -- optional note from visitor (added later)
   status                TEXT NOT NULL DEFAULT 'pending',  -- pending | approved | denied
   assigned_worker_id    UUID REFERENCES workers(id),
   worker_message        TEXT,
+  calendar_event_id     TEXT,               -- Google Calendar event ID for sync
   edit_token            UUID NOT NULL DEFAULT gen_random_uuid(),
   created_at            TIMESTAMPTZ DEFAULT NOW(),
   updated_at            TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Add new columns to existing tables (safe to run multiple times)
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS visitor_message TEXT;
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS calendar_event_id TEXT;
 
 -- ── Booking responses (per worker) ────────────────────────────────────────────
 

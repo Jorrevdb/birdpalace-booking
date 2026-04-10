@@ -9,7 +9,7 @@ const resend = new Resend(process.env.RESEND_API_KEY)
 const MAPS_URL = 'https://maps.app.goo.gl/WXgroKXYJiGK95QLA'
 
 function mapsButton(): string {
-  return `<a href="${MAPS_URL}" style="display:inline-block;padding:12px 24px;background:#1a73e8;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;font-size:14px">📍 Bekijk op Google Maps</a>`
+  return `<a href="${MAPS_URL}" style="display:inline-block;padding:11px 22px;background:transparent;color:#1a73e8;text-decoration:none;border-radius:8px;font-weight:600;font-size:14px;border:2px solid #1a73e8">📍 Bekijk op Google Maps</a>`
 }
 
 async function getFrom() {

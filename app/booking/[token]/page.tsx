@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 import { format, parseISO } from 'date-fns'
 import { nl } from 'date-fns/locale'
 import Link from 'next/link'
-import { headers } from 'next/headers'
+import { supabaseAdmin } from '@/lib/supabase'
 
 interface Booking {
   id: string
@@ -21,21 +21,16 @@ interface Booking {
   worker_message: string | null
 }
 
+// Query Supabase directly — avoids any Next.js internal-fetch caching that would
+// cause the page to show stale status after an admin approve/deny action.
 async function getBooking(token: string): Promise<Booking | null> {
-  try {
-    const h = headers()
-    const host = h.get('x-forwarded-host') ?? h.get('host')
-    const proto = h.get('x-forwarded-proto') ?? 'https'
-    const baseUrl = host
-      ? `${proto}://${host}`
-      : (process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000')
-    const res = await fetch(`${baseUrl}/api/bookings/${token}`, { cache: 'no-store' })
-    if (!res.ok) return null
-    const data = await res.json()
-    return data.booking
-  } catch {
-    return null
-  }
+  const { data, error } = await supabaseAdmin
+    .from('bookings')
+    .select('*')
+    .eq('edit_token', token)
+    .single()
+  if (error || !data) return null
+  return data as Booking
 }
 
 export default async function BookingStatusPage({
@@ -154,12 +149,12 @@ export default async function BookingStatusPage({
 
         {booking.status === 'approved' && (
           <div className="mt-4 space-y-3">
-            {/* Google Maps */}
+            {/* Google Maps — outline/secondary CTA */}
             <a
               href={MAPS_URL}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center justify-center gap-2 w-full px-5 py-3 bg-[#1a73e8] text-white rounded-xl font-semibold hover:bg-[#1558b0] transition-colors text-sm"
+              className="flex items-center justify-center gap-2 w-full px-5 py-3 bg-white border-2 border-[#1a73e8] text-[#1a73e8] rounded-xl font-semibold hover:bg-[#e8f0fe] transition-colors text-sm"
             >
               📍 Bekijk op Google Maps
             </a>

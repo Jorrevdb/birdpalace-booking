@@ -64,8 +64,8 @@ export default async function BookingStatusPage({
   const endHh = String(parseInt(hh, 10) + 1).padStart(2, '0')
   const gcalStart = `${y}${mo}${d}T${hh}${mm}00`
   const gcalEnd   = `${y}${mo}${d}T${endHh}${mm}00`
-  const gcalUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=Tour+Bird+Palace&dates=${gcalStart}%2F${gcalEnd}&details=Rondleiding+bij+Bird+Palace&location=Bird+Palace%2C+Koerheide+1%2C+3900+Pelt&ctz=Europe%2FBrussels`
-  const outlookUrl = `https://outlook.live.com/calendar/0/deeplink/compose?subject=Tour+Bird+Palace&startdt=${booking.tour_date}T${booking.tour_time}:00&enddt=${booking.tour_date}T${endHh}:${mm}:00&body=Rondleiding+bij+Bird+Palace&location=Bird+Palace%2C+Koerheide+1%2C+3900+Pelt`
+  const gcalUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=Tour+Bird+Palace&dates=${gcalStart}%2F${gcalEnd}&details=Rondleiding+bij+Bird+Palace&location=Bird+Palace%2C+Ballaststraat+23%2C+3900+Pelt&ctz=Europe%2FBrussels`
+  const outlookUrl = `https://outlook.live.com/calendar/0/deeplink/compose?subject=Tour+Bird+Palace&startdt=${booking.tour_date}T${booking.tour_time}:00&enddt=${booking.tour_date}T${endHh}:${mm}:00&body=Rondleiding+bij+Bird+Palace&location=Bird+Palace%2C+Ballaststraat+23%2C+3900+Pelt`
 
   const statusConfig = {
     pending: {

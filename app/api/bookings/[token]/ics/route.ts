@@ -44,7 +44,7 @@ export async function GET(
     `DTEND;TZID=Europe/Brussels:${dtEnd}`,
     'SUMMARY:Tour Bird Palace',
     `DESCRIPTION:Rondleiding bij Bird Palace voor ${booking.total_people} personen.`,
-    'LOCATION:Bird Palace\\, Koerheide 1\\, 3900 Pelt',
+    'LOCATION:Bird Palace\\, Ballaststraat 23\\, 3900 Pelt',
     'URL:https://maps.app.goo.gl/WXgroKXYJiGK95QLA',
     'END:VEVENT',
     'END:VCALENDAR',

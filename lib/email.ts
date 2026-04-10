@@ -173,8 +173,8 @@ export async function sendBookingApprovedEmail(
             ${peopleRows(booking)}
           </table>
           ${booking.worker_message ? `<blockquote style="border-left:4px solid ${brand};margin:0;padding:12px 16px;background:${brandLight};border-radius:0 8px 8px 0">${booking.worker_message}</blockquote>` : ''}
-          <div style="margin-top:24px;display:flex;gap:12px;flex-wrap:wrap">
-            <a href="${siteUrl}/booking/${booking.edit_token}" style="display:inline-block;padding:12px 24px;background:${brand};color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Bekijk boeking</a>
+          <div style="margin-top:24px">
+            <a href="${siteUrl}/booking/${booking.edit_token}" style="display:inline-block;padding:12px 24px;background:${brand};color:#fff;text-decoration:none;border-radius:8px;font-weight:600;margin-right:16px;margin-bottom:10px">Bekijk boeking</a>
             ${mapsButton()}
           </div>
         </div>
@@ -248,8 +248,8 @@ export async function sendBookingUpdatedEmail(booking: Booking): Promise<void> {
             ${peopleRows(booking)}
           </table>
           ${booking.worker_message ? `<blockquote style="border-left:4px solid ${brand};margin:0;padding:12px 16px;background:${brandLight};border-radius:0 8px 8px 0">${booking.worker_message}</blockquote>` : ''}
-          <div style="margin-top:24px;display:flex;gap:12px;flex-wrap:wrap">
-            <a href="${siteUrl}/booking/${booking.edit_token}" style="display:inline-block;padding:12px 24px;background:${brand};color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Bekijk boeking</a>
+          <div style="margin-top:24px">
+            <a href="${siteUrl}/booking/${booking.edit_token}" style="display:inline-block;padding:12px 24px;background:${brand};color:#fff;text-decoration:none;border-radius:8px;font-weight:600;margin-right:16px;margin-bottom:10px">Bekijk boeking</a>
             ${booking.status === 'approved' ? mapsButton() : ''}
           </div>
         </div>

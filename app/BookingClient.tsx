@@ -518,7 +518,7 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
     return (
       <div className="min-h-screen bg-gray-50 py-8 px-4">
         <div className="max-w-lg mx-auto">
-          <h1 className="text-2xl font-bold text-center text-gray-900 mb-1">Boek een tour</h1>
+          <h1 className="text-2xl font-bold text-center text-gray-900 mb-1">{siteTitle}</h1>
           <p className="text-center text-gray-500 text-sm mb-6">Vertel ons meer over jullie groep</p>
           <StepIndicator currentStep={2} />
 
@@ -608,7 +608,7 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
     return (
       <div className="min-h-screen bg-gray-50 py-8 px-4">
         <div className="max-w-lg mx-auto">
-          <h1 className="text-2xl font-bold text-center text-gray-900 mb-1">Boek een tour</h1>
+          <h1 className="text-2xl font-bold text-center text-gray-900 mb-1">{siteTitle}</h1>
           <p className="text-center text-gray-500 text-sm mb-6">Jouw contactgegevens</p>
           <StepIndicator currentStep={3} />
 

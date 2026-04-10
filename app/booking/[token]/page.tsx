@@ -16,6 +16,7 @@ interface Booking {
   visitor_name: string
   visitor_email: string
   visitor_phone: string
+  visitor_message?: string | null
   status: 'pending' | 'approved' | 'denied'
   worker_message: string | null
 }

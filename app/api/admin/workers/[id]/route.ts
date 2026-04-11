@@ -37,10 +37,31 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
     const password = url.searchParams.get('password')
     if (password !== getAdminPassword()) return new NextResponse('Unauthorized', { status: 401 })
 
+    // 1. Ontkoppel de worker van bookings (assigned_worker_id → null)
+    const { error: bookingsErr } = await supabaseAdmin
+      .from('bookings')
+      .update({ assigned_worker_id: null })
+      .eq('assigned_worker_id', id)
+    if (bookingsErr) {
+      console.error('supabase unlink bookings error', bookingsErr)
+      return new NextResponse(bookingsErr.message || 'Kon worker niet ontkoppelen van boekingen', { status: 500 })
+    }
+
+    // 2. Verwijder booking_responses van deze worker
+    const { error: responsesErr } = await supabaseAdmin
+      .from('booking_responses')
+      .delete()
+      .eq('worker_id', id)
+    if (responsesErr) {
+      console.error('supabase delete booking_responses error', responsesErr)
+      return new NextResponse(responsesErr.message || 'Kon worker-responses niet verwijderen', { status: 500 })
+    }
+
+    // 3. Verwijder de worker zelf
     const { error } = await supabaseAdmin.from('workers').delete().eq('id', id)
     if (error) {
-      console.error('supabase delete error', error)
-      return new NextResponse(error.message || 'Delete failed', { status: 500 })
+      console.error('supabase delete worker error', error)
+      return new NextResponse(error.message || 'Verwijderen mislukt', { status: 500 })
     }
 
     return new NextResponse('Deleted', { status: 200 })

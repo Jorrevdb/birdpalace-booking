@@ -123,7 +123,6 @@ function AdminPageInner() {
                       <tr style={{ background: '#f9fafb' }}>
                         <th style={{ textAlign: 'left', padding: '10px 12px', borderBottom: '2px solid #e5e7eb', fontWeight: 600, color: '#374151', fontSize: 12, textTransform: 'uppercase', letterSpacing: '.05em' }}>Naam</th>
                         <th style={{ textAlign: 'left', padding: '10px 12px', borderBottom: '2px solid #e5e7eb', fontWeight: 600, color: '#374151', fontSize: 12, textTransform: 'uppercase', letterSpacing: '.05em' }}>E-mail</th>
-                        <th style={{ textAlign: 'left', padding: '10px 12px', borderBottom: '2px solid #e5e7eb', fontWeight: 600, color: '#374151', fontSize: 12, textTransform: 'uppercase', letterSpacing: '.05em' }}>Google Calendar ID</th>
                         <th style={{ textAlign: 'left', padding: '10px 12px', borderBottom: '2px solid #e5e7eb', fontWeight: 600, color: '#374151', fontSize: 12, textTransform: 'uppercase', letterSpacing: '.05em' }}>Aangemaakt</th>
                         <th style={{ padding: '10px 12px', borderBottom: '2px solid #e5e7eb' }}></th>
                       </tr>
@@ -169,13 +168,12 @@ function AddWorkerForm({ password, onAdded }: { password: string; onAdded: () =>
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
-  const [gid, setGid] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
   async function handleAdd() {
-    if (!name.trim() || !email.trim() || !gid.trim()) {
-      setError('Vul alle velden in.')
+    if (!name.trim() || !email.trim()) {
+      setError('Vul naam en e-mail in.')
       return
     }
     setSaving(true)
@@ -184,11 +182,11 @@ function AddWorkerForm({ password, onAdded }: { password: string; onAdded: () =>
       const res = await fetch('/api/admin/workers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password, name: name.trim(), email: email.trim(), google_calendar_id: gid.trim() }),
+        body: JSON.stringify({ password, name: name.trim(), email: email.trim(), google_calendar_id: '' }),
       })
       const text = await res.text()
       if (!res.ok) throw new Error(text || 'Toevoegen mislukt')
-      setName(''); setEmail(''); setGid(''); setOpen(false)
+      setName(''); setEmail(''); setOpen(false)
       onAdded()
     } catch (err: any) {
       setError(err.message || 'Fout bij toevoegen')
@@ -224,13 +222,6 @@ function AddWorkerForm({ password, onAdded }: { password: string; onAdded: () =>
           <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="jan@voorbeeld.be" style={inputStyle} />
         </label>
       </div>
-      <label style={{ ...labelStyle, marginTop: 12 }}>
-        Google Calendar ID
-        <input value={gid} onChange={(e) => setGid(e.target.value)} placeholder="jan@gmail.com of ...@group.calendar.google.com" style={inputStyle} />
-      </label>
-      <p style={{ margin: '6px 0 0', fontSize: 12, color: '#9ca3af' }}>
-        Deel de kalender eerst met het service account e-mailadres hierboven.
-      </p>
       {error && <p style={{ margin: '10px 0 0', fontSize: 13, color: '#dc2626' }}>{error}</p>}
       <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
         <button
@@ -299,26 +290,6 @@ function WorkerRow({ worker, password, onDeleted, onUpdated }: { worker: any; pa
     }
   }
 
-  async function checkCalendar() {
-    setStatusMsg({ text: 'Controleren…', type: 'info' })
-    try {
-      const res = await fetch('/api/admin/workers/check', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password, google_calendar_id: gid }),
-      })
-      const text = await res.text()
-      let data: any
-      try { data = JSON.parse(text) } catch { data = { ok: false, message: text } }
-      setStatusMsg(data.ok
-        ? { text: '✓ Kalender bereikbaar', type: 'ok' }
-        : { text: data.message || 'Niet bereikbaar', type: 'error' }
-      )
-    } catch (err: any) {
-      setStatusMsg({ text: err.message || 'Fout', type: 'error' })
-    }
-  }
-
   const tdStyle = { padding: '13px 12px', borderBottom: '1px solid #f3f4f6', fontSize: 14 }
   const inputStyle = { width: '100%', padding: '7px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13, boxSizing: 'border-box' as const }
 
@@ -331,9 +302,6 @@ function WorkerRow({ worker, password, onDeleted, onUpdated }: { worker: any; pa
         <td style={tdStyle}>
           {editing ? <input value={email} onChange={(e) => setEmail(e.target.value)} style={inputStyle} /> : email}
         </td>
-        <td style={{ ...tdStyle, fontSize: 12, color: '#6b7280', fontFamily: 'monospace' }}>
-          {editing ? <input value={gid} onChange={(e) => setGid(e.target.value)} style={inputStyle} /> : gid}
-        </td>
         <td style={{ ...tdStyle, fontSize: 12, color: '#9ca3af' }}>
           {worker.created_at ? new Date(worker.created_at).toLocaleDateString('nl-BE') : '—'}
         </td>
@@ -343,16 +311,13 @@ function WorkerRow({ worker, password, onDeleted, onUpdated }: { worker: any; pa
               <button onClick={save} disabled={saving} style={{ marginRight: 6, padding: '6px 14px', borderRadius: 8, border: 'none', background: '#111827', color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
                 {saving ? 'Opslaan…' : 'Opslaan'}
               </button>
-              <button onClick={() => { setEditing(false); setName(worker.name); setEmail(worker.email); setGid(worker.google_calendar_id) }} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', fontSize: 13, cursor: 'pointer' }}>
+              <button onClick={() => { setEditing(false); setName(worker.name); setEmail(worker.email) }} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', fontSize: 13, cursor: 'pointer' }}>
                 Annuleren
               </button>
             </>
           ) : (
             <>
-              <button onClick={checkCalendar} style={{ marginRight: 4, padding: '6px 10px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', fontSize: 12, cursor: 'pointer', color: '#6b7280' }} title="Controleer kalender toegang">
-                🔍
-              </button>
-              <button onClick={() => setEditing(true)} style={{ marginRight: 4, padding: '6px 10px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', fontSize: 12, cursor: 'pointer', color: '#374151' }}>
+              <button onClick={() => setEditing(true)} style={{ marginRight: 6, padding: '6px 10px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', fontSize: 12, cursor: 'pointer', color: '#374151' }}>
                 Bewerk
               </button>
               <button onClick={remove} disabled={deleting} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #fecaca', background: '#fee2e2', color: '#dc2626', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>

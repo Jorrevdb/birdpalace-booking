@@ -34,7 +34,7 @@ export async function POST(req: Request) {
     if (password !== getAdminPassword()) {
       return new NextResponse('Unauthorized', { status: 401 })
     }
-    if (!name || !email || !google_calendar_id) {
+    if (!name || !email) {
       return new NextResponse('Missing fields', { status: 400 })
     }
 

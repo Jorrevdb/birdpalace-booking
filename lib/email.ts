@@ -126,6 +126,7 @@ export async function sendWorkerNotificationEmail(
             <tr><td style="padding:8px 0;color:#666">Tijdslot</td><td style="padding:8px 0;font-weight:600">${booking.tour_time}</td></tr>
             ${peopleRows(booking)}
             <tr><td style="padding:8px 0;color:#666">Naam bezoeker</td><td style="padding:8px 0;font-weight:600">${booking.visitor_name}</td></tr>
+            <tr><td style="padding:8px 0;color:#666">E-mail bezoeker</td><td style="padding:8px 0;font-weight:600">${booking.visitor_email}</td></tr>
             <tr><td style="padding:8px 0;color:#666">Telefoon</td><td style="padding:8px 0;font-weight:600">${booking.visitor_phone}</td></tr>
             ${visitorMessageBlock(booking)}
           </table>

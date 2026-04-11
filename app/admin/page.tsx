@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useRef, Suspense } from 'react'
+import React, { useEffect, useState, useRef, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 
 type Worker = { id: string; name: string; email: string; google_calendar_id: string; created_at?: string }
@@ -97,28 +97,44 @@ function AdminPageInner() {
             <button onClick={() => setTab('calendar')} style={{ padding: '8px 12px', background: tab === 'calendar' ? 'var(--primary-color-600)' : undefined, color: tab === 'calendar' ? '#fff' : undefined }}>Calendar</button>
           </div>
 
-          <p>Service account email (share worker calendars with this): <strong>{clientEmail ?? '—'}</strong></p>
           {tab === 'workers' && (
-            <div style={{ marginTop: 12 }}>
-              <h2>Workers</h2>
+            <div style={{ marginTop: 12, maxWidth: 860 }}>
+              {clientEmail && (
+                <div style={{ marginBottom: 20, padding: '12px 16px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: 13, color: '#475569' }}>
+                  <strong style={{ color: '#1e293b' }}>📋 Service account e-mail</strong>
+                  <p style={{ margin: '4px 0 0', lineHeight: 1.5 }}>
+                    Werknemers moeten hun Google Calendar delen met dit adres zodat het boekingssysteem beschikbaarheid kan inlezen:
+                  </p>
+                  <code style={{ display: 'inline-block', marginTop: 6, padding: '4px 10px', background: '#e2e8f0', borderRadius: 6, fontFamily: 'monospace', color: '#1e293b', userSelect: 'all' }}>{clientEmail}</code>
+                </div>
+              )}
+
+              <AddWorkerForm password={password} onAdded={() => fetchWorkers()} />
+
               {loadingWorkers ? (
-                <p>Loading…</p>
+                <p style={{ color: '#9ca3af', marginTop: 16 }}>Laden…</p>
+              ) : workers.length === 0 ? (
+                <p style={{ color: '#9ca3af', marginTop: 16, fontSize: 14 }}>Nog geen workers aangemaakt.</p>
               ) : (
-                <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 12 }}>
-                  <thead>
-                    <tr>
-                      <th style={{ textAlign: 'left', padding: 8 }}>Name</th>
-                      <th style={{ textAlign: 'left', padding: 8 }}>Email</th>
-                      <th style={{ textAlign: 'left', padding: 8 }}>Google calendar id</th>
-                      <th style={{ textAlign: 'left', padding: 8 }}>Created</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {workers.map((w) => (
-                      <WorkerRow key={w.id} worker={w} password={password} onDeleted={() => fetchWorkers()} onUpdated={() => fetchWorkers()} />
-                    ))}
-                  </tbody>
-                </table>
+                <div style={{ marginTop: 20 }}>
+                  <p style={{ margin: '0 0 10px', fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.06em' }}>{workers.length} worker{workers.length !== 1 ? 's' : ''}</p>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ background: '#f9fafb' }}>
+                        <th style={{ textAlign: 'left', padding: '10px 12px', borderBottom: '2px solid #e5e7eb', fontWeight: 600, color: '#374151', fontSize: 12, textTransform: 'uppercase', letterSpacing: '.05em' }}>Naam</th>
+                        <th style={{ textAlign: 'left', padding: '10px 12px', borderBottom: '2px solid #e5e7eb', fontWeight: 600, color: '#374151', fontSize: 12, textTransform: 'uppercase', letterSpacing: '.05em' }}>E-mail</th>
+                        <th style={{ textAlign: 'left', padding: '10px 12px', borderBottom: '2px solid #e5e7eb', fontWeight: 600, color: '#374151', fontSize: 12, textTransform: 'uppercase', letterSpacing: '.05em' }}>Google Calendar ID</th>
+                        <th style={{ textAlign: 'left', padding: '10px 12px', borderBottom: '2px solid #e5e7eb', fontWeight: 600, color: '#374151', fontSize: 12, textTransform: 'uppercase', letterSpacing: '.05em' }}>Aangemaakt</th>
+                        <th style={{ padding: '10px 12px', borderBottom: '2px solid #e5e7eb' }}></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {workers.map((w) => (
+                        <WorkerRow key={w.id} worker={w} password={password} onDeleted={() => fetchWorkers()} onUpdated={() => fetchWorkers()} />
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </div>
           )}
@@ -149,45 +165,142 @@ function AdminPageInner() {
   )
 }
 
+function AddWorkerForm({ password, onAdded }: { password: string; onAdded: () => void }) {
+  const [open, setOpen] = useState(false)
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [gid, setGid] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  async function handleAdd() {
+    if (!name.trim() || !email.trim() || !gid.trim()) {
+      setError('Vul alle velden in.')
+      return
+    }
+    setSaving(true)
+    setError('')
+    try {
+      const res = await fetch('/api/admin/workers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password, name: name.trim(), email: email.trim(), google_calendar_id: gid.trim() }),
+      })
+      const text = await res.text()
+      if (!res.ok) throw new Error(text || 'Toevoegen mislukt')
+      setName(''); setEmail(''); setGid(''); setOpen(false)
+      onAdded()
+    } catch (err: any) {
+      setError(err.message || 'Fout bij toevoegen')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const inputStyle = { display: 'block', marginTop: 5, width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #d1d5db', fontSize: 14, boxSizing: 'border-box' as const }
+  const labelStyle = { display: 'block', fontSize: 13, fontWeight: 600, color: '#374151' } as const
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 18px', borderRadius: 10, border: 'none', background: '#111827', color: '#fff', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}
+      >
+        + Worker toevoegen
+      </button>
+    )
+  }
+
+  return (
+    <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 12, padding: 20, marginBottom: 4 }}>
+      <h3 style={{ margin: '0 0 16px', fontSize: 16, fontWeight: 700, color: '#111827' }}>Nieuwe worker</h3>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <label style={labelStyle}>
+          Naam
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Jan Janssens" style={inputStyle} />
+        </label>
+        <label style={labelStyle}>
+          E-mailadres
+          <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="jan@voorbeeld.be" style={inputStyle} />
+        </label>
+      </div>
+      <label style={{ ...labelStyle, marginTop: 12 }}>
+        Google Calendar ID
+        <input value={gid} onChange={(e) => setGid(e.target.value)} placeholder="jan@gmail.com of ...@group.calendar.google.com" style={inputStyle} />
+      </label>
+      <p style={{ margin: '6px 0 0', fontSize: 12, color: '#9ca3af' }}>
+        Deel de kalender eerst met het service account e-mailadres hierboven.
+      </p>
+      {error && <p style={{ margin: '10px 0 0', fontSize: 13, color: '#dc2626' }}>{error}</p>}
+      <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+        <button
+          onClick={handleAdd}
+          disabled={saving}
+          style={{ padding: '9px 20px', borderRadius: 10, border: 'none', background: '#111827', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}
+        >
+          {saving ? 'Opslaan…' : 'Toevoegen'}
+        </button>
+        <button
+          onClick={() => { setOpen(false); setError('') }}
+          style={{ padding: '9px 16px', borderRadius: 10, border: '1px solid #e5e7eb', background: '#fff', color: '#374151', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}
+        >
+          Annuleren
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function WorkerRow({ worker, password, onDeleted, onUpdated }: { worker: any; password: string; onDeleted?: () => void; onUpdated?: () => void }) {
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(worker.name)
   const [email, setEmail] = useState(worker.email)
   const [gid, setGid] = useState(worker.google_calendar_id)
-  const [status, setStatus] = useState<string | null>(null)
+  const [statusMsg, setStatusMsg] = useState<{ text: string; type: 'ok' | 'error' | 'info' } | null>(null)
   const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   async function save() {
     setSaving(true)
+    setStatusMsg(null)
     try {
       const res = await fetch(`/api/admin/workers/${worker.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password, name, email, google_calendar_id: gid }),
       })
-      if (!res.ok) throw new Error('Update failed')
+      if (!res.ok) {
+        const text = await res.text().catch(() => 'Update mislukt')
+        throw new Error(text || 'Update mislukt')
+      }
       setEditing(false)
       onUpdated && onUpdated()
     } catch (err: any) {
-      setStatus(err.message || 'Error')
+      setStatusMsg({ text: err.message || 'Fout bij opslaan', type: 'error' })
     } finally {
       setSaving(false)
     }
   }
 
   async function remove() {
-    if (!confirm('Delete this worker?')) return
+    if (!confirm(`Weet je zeker dat je "${worker.name}" wil verwijderen?`)) return
+    setDeleting(true)
+    setStatusMsg(null)
     try {
       const res = await fetch(`/api/admin/workers/${worker.id}?password=${encodeURIComponent(password)}`, { method: 'DELETE' })
-      if (!res.ok) throw new Error('Delete failed')
+      if (!res.ok) {
+        const text = await res.text().catch(() => 'Verwijderen mislukt')
+        throw new Error(text || 'Verwijderen mislukt')
+      }
       onDeleted && onDeleted()
     } catch (err: any) {
-      setStatus(err.message || 'Error')
+      setStatusMsg({ text: err.message || 'Verwijderen mislukt', type: 'error' })
+      setDeleting(false)
     }
   }
 
   async function checkCalendar() {
-    setStatus('Checking...')
+    setStatusMsg({ text: 'Controleren…', type: 'info' })
     try {
       const res = await fetch('/api/admin/workers/check', {
         method: 'POST',
@@ -196,42 +309,74 @@ function WorkerRow({ worker, password, onDeleted, onUpdated }: { worker: any; pa
       })
       const text = await res.text()
       let data: any
-      try {
-        data = JSON.parse(text)
-      } catch (e) {
-        data = { ok: false, message: text }
-      }
-      if (data.ok) setStatus('Accessible')
-      else setStatus(data.message || 'Not accessible')
+      try { data = JSON.parse(text) } catch { data = { ok: false, message: text } }
+      setStatusMsg(data.ok
+        ? { text: '✓ Kalender bereikbaar', type: 'ok' }
+        : { text: data.message || 'Niet bereikbaar', type: 'error' }
+      )
     } catch (err: any) {
-      setStatus(err.message || 'Error')
+      setStatusMsg({ text: err.message || 'Fout', type: 'error' })
     }
   }
 
+  const tdStyle = { padding: '13px 12px', borderBottom: '1px solid #f3f4f6', fontSize: 14 }
+  const inputStyle = { width: '100%', padding: '7px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13, boxSizing: 'border-box' as const }
+
   return (
-    <tr>
-      <td style={{ padding: 8 }}>
-        {editing ? <input value={name} onChange={(e) => setName(e.target.value)} /> : name}
-      </td>
-      <td style={{ padding: 8 }}>{editing ? <input value={email} onChange={(e) => setEmail(e.target.value)} /> : email}</td>
-      <td style={{ padding: 8 }}>{editing ? <input value={gid} onChange={(e) => setGid(e.target.value)} /> : gid}</td>
-      <td style={{ padding: 8 }}>{worker.created_at ? new Date(worker.created_at).toLocaleString() : '—'}</td>
-      <td style={{ padding: 8 }}>
-        {editing ? (
-          <>
-            <button onClick={save} disabled={saving} style={{ marginRight: 8 }}>Save</button>
-            <button onClick={() => setEditing(false)}>Cancel</button>
-          </>
-        ) : (
-          <>
-            <button onClick={() => setEditing(true)} style={{ marginRight: 8 }}>Edit</button>
-            <button onClick={remove} style={{ marginRight: 8 }}>Delete</button>
-            <button onClick={checkCalendar}>Check calendar</button>
-          </>
-        )}
-        {status && <div style={{ marginTop: 6 }}>{status}</div>}
-      </td>
-    </tr>
+    <>
+      <tr>
+        <td style={tdStyle}>
+          {editing ? <input value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} /> : <span style={{ fontWeight: 500 }}>{name}</span>}
+        </td>
+        <td style={tdStyle}>
+          {editing ? <input value={email} onChange={(e) => setEmail(e.target.value)} style={inputStyle} /> : email}
+        </td>
+        <td style={{ ...tdStyle, fontSize: 12, color: '#6b7280', fontFamily: 'monospace' }}>
+          {editing ? <input value={gid} onChange={(e) => setGid(e.target.value)} style={inputStyle} /> : gid}
+        </td>
+        <td style={{ ...tdStyle, fontSize: 12, color: '#9ca3af' }}>
+          {worker.created_at ? new Date(worker.created_at).toLocaleDateString('nl-BE') : '—'}
+        </td>
+        <td style={{ ...tdStyle, textAlign: 'right', whiteSpace: 'nowrap' }}>
+          {editing ? (
+            <>
+              <button onClick={save} disabled={saving} style={{ marginRight: 6, padding: '6px 14px', borderRadius: 8, border: 'none', background: '#111827', color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
+                {saving ? 'Opslaan…' : 'Opslaan'}
+              </button>
+              <button onClick={() => { setEditing(false); setName(worker.name); setEmail(worker.email); setGid(worker.google_calendar_id) }} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', fontSize: 13, cursor: 'pointer' }}>
+                Annuleren
+              </button>
+            </>
+          ) : (
+            <>
+              <button onClick={checkCalendar} style={{ marginRight: 4, padding: '6px 10px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', fontSize: 12, cursor: 'pointer', color: '#6b7280' }} title="Controleer kalender toegang">
+                🔍
+              </button>
+              <button onClick={() => setEditing(true)} style={{ marginRight: 4, padding: '6px 10px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', fontSize: 12, cursor: 'pointer', color: '#374151' }}>
+                Bewerk
+              </button>
+              <button onClick={remove} disabled={deleting} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #fecaca', background: '#fee2e2', color: '#dc2626', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>
+                {deleting ? '…' : 'Verwijder'}
+              </button>
+            </>
+          )}
+        </td>
+      </tr>
+      {statusMsg && (
+        <tr>
+          <td colSpan={5} style={{ padding: '0 12px 10px', borderBottom: '1px solid #f3f4f6' }}>
+            <span style={{
+              display: 'inline-block', padding: '4px 12px', borderRadius: 8, fontSize: 12, fontWeight: 500,
+              background: statusMsg.type === 'ok' ? '#f0fdf4' : statusMsg.type === 'error' ? '#fef2f2' : '#f9fafb',
+              color: statusMsg.type === 'ok' ? '#16a34a' : statusMsg.type === 'error' ? '#dc2626' : '#6b7280',
+              border: `1px solid ${statusMsg.type === 'ok' ? '#bbf7d0' : statusMsg.type === 'error' ? '#fecaca' : '#e5e7eb'}`,
+            }}>
+              {statusMsg.text}
+            </span>
+          </td>
+        </tr>
+      )}
+    </>
   )
 }
 
@@ -239,12 +384,18 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
   const [bookings, setBookings] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
+  const [messageType, setMessageType] = useState<'success' | 'error'>('success')
   const [modalOpen, setModalOpen] = useState(false)
-  const deepLinkOpenedRef = useRef(false) // prevents re-opening after save
+  const deepLinkOpenedRef = useRef(false)
   const [activeBooking, setActiveBooking] = useState<any | null>(null)
   const [savingModal, setSavingModal] = useState(false)
   const [deletingModal, setDeletingModal] = useState(false)
   const [notifyVisitor, setNotifyVisitor] = useState(true)
+
+  // Filters
+  const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'approved' | 'denied'>('all')
+  const [filterTime, setFilterTime] = useState<'upcoming' | 'past' | 'all'>('upcoming')
+  const [searchQuery, setSearchQuery] = useState('')
 
   const [formStatus, setFormStatus] = useState('pending')
   const [formDate, setFormDate] = useState('')
@@ -344,6 +495,7 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
       fetchBookings()
     } catch (err: any) {
       setMessage(err.message || 'Status update failed')
+      setMessageType('error')
     }
   }
 
@@ -379,8 +531,10 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
       setModalOpen(false)
       fetchBookings()
       setMessage(notifyVisitor ? 'Boeking opgeslagen en e-mail verstuurd.' : 'Boeking opgeslagen.')
+      setMessageType('success')
     } catch (err: any) {
       setMessage(err.message || 'Error saving booking')
+      setMessageType('error')
     } finally {
       setSavingModal(false)
     }
@@ -406,8 +560,10 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
       closeModal()
       fetchBookings()
       setMessage('Boeking verwijderd.')
+      setMessageType('success')
     } catch (err: any) {
       setMessage(err.message || 'Error deleting booking')
+      setMessageType('error')
     } finally {
       setDeletingModal(false)
     }
@@ -418,166 +574,275 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
     setActiveBooking(null)
   }
 
+  const todayStr = new Date().toISOString().slice(0, 10)
+
+  const filteredBookings = bookings.filter((b) => {
+    if (filterStatus !== 'all' && b.status !== filterStatus) return false
+    if (filterTime === 'upcoming' && b.tour_date < todayStr) return false
+    if (filterTime === 'past' && b.tour_date >= todayStr) return false
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase()
+      if (
+        !b.visitor_name?.toLowerCase().includes(q) &&
+        !b.visitor_email?.toLowerCase().includes(q) &&
+        !b.visitor_phone?.toLowerCase().includes(q) &&
+        !b.tour_date?.includes(q)
+      ) return false
+    }
+    return true
+  })
+
+  const pendingUpcomingCount = bookings.filter(b => b.status === 'pending' && b.tour_date >= todayStr).length
+
+  const filterBtnBase: React.CSSProperties = { padding: '6px 14px', borderRadius: 999, border: '1px solid', fontWeight: 600, fontSize: 13, cursor: 'pointer', transition: 'all .15s' }
+  const filterBtnActive: React.CSSProperties = { background: '#111827', color: '#fff', borderColor: '#111827' }
+  const filterBtnInactive: React.CSSProperties = { background: '#fff', color: '#6b7280', borderColor: '#d1d5db' }
+
   return (
     <div>
-      {loading ? <p>Loading…</p> : (
-        <>
-        <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 12, fontSize: 18 }}>
+      {/* ── Filter bar ── */}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+        {/* Search */}
+        <input
+          type="search"
+          placeholder="🔍  Zoek op naam, e-mail of datum…"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          style={{ padding: '8px 14px', borderRadius: 10, border: '1px solid #d1d5db', fontSize: 14, minWidth: 230, outline: 'none' }}
+        />
+
+        {/* Status filter */}
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {([
+            { key: 'all' as const, label: 'Alle' },
+            { key: 'pending' as const, label: `Afwachtend${pendingUpcomingCount > 0 ? ` (${pendingUpcomingCount})` : ''}` },
+            { key: 'approved' as const, label: 'Geaccepteerd' },
+            { key: 'denied' as const, label: 'Geweigerd' },
+          ]).map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => setFilterStatus(key)}
+              style={{
+                ...filterBtnBase,
+                ...(filterStatus === key
+                  ? key === 'approved' ? { background: 'var(--primary-color-600)', color: '#fff', borderColor: 'var(--primary-color-600)' }
+                  : key === 'denied' ? { background: '#dc2626', color: '#fff', borderColor: '#dc2626' }
+                  : key === 'pending' ? { background: '#f59e0b', color: '#fff', borderColor: '#f59e0b' }
+                  : filterBtnActive
+                  : filterBtnInactive)
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* Time filter */}
+        <div style={{ display: 'flex', gap: 6 }}>
+          {([
+            { key: 'upcoming' as const, label: '📅 Aankomend' },
+            { key: 'past' as const, label: '🗓 Verleden' },
+            { key: 'all' as const, label: 'Alle' },
+          ]).map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => setFilterTime(key)}
+              style={{ ...filterBtnBase, ...(filterTime === key ? filterBtnActive : filterBtnInactive) }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <span style={{ fontSize: 13, color: '#9ca3af', marginLeft: 'auto' }}>
+          {filteredBookings.length} resultaat{filteredBookings.length !== 1 ? 'en' : ''}
+        </span>
+      </div>
+
+      {loading ? (
+        <div style={{ padding: '48px 0', textAlign: 'center', color: '#9ca3af' }}>Laden…</div>
+      ) : filteredBookings.length === 0 ? (
+        <div style={{ padding: '48px 0', textAlign: 'center', color: '#9ca3af', fontSize: 15 }}>
+          Geen boekingen gevonden
+        </div>
+      ) : (
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
           <thead>
-            <tr>
-              <th style={{ textAlign: 'left', padding: '12px 8px', borderBottom: '1px solid #e5e7eb' }}>Datum</th>
-              <th style={{ textAlign: 'left', padding: '12px 8px', borderBottom: '1px solid #e5e7eb' }}>Tijd</th>
-              <th style={{ textAlign: 'left', padding: '12px 8px', borderBottom: '1px solid #e5e7eb' }}>Name</th>
-              <th style={{ textAlign: 'left', padding: '12px 8px', borderBottom: '1px solid #e5e7eb' }}>Personen</th>
-              <th style={{ textAlign: 'left', padding: '12px 8px', borderBottom: '1px solid #e5e7eb' }}>Status</th>
-              <th style={{ textAlign: 'right', padding: '12px 8px', borderBottom: '1px solid #e5e7eb' }}></th>
+            <tr style={{ background: '#f9fafb' }}>
+              <th style={{ textAlign: 'left', padding: '10px 12px', borderBottom: '2px solid #e5e7eb', fontWeight: 600, color: '#374151', fontSize: 12, textTransform: 'uppercase', letterSpacing: '.05em' }}>Datum</th>
+              <th style={{ textAlign: 'left', padding: '10px 12px', borderBottom: '2px solid #e5e7eb', fontWeight: 600, color: '#374151', fontSize: 12, textTransform: 'uppercase', letterSpacing: '.05em' }}>Tijd</th>
+              <th style={{ textAlign: 'left', padding: '10px 12px', borderBottom: '2px solid #e5e7eb', fontWeight: 600, color: '#374151', fontSize: 12, textTransform: 'uppercase', letterSpacing: '.05em' }}>Naam</th>
+              <th style={{ textAlign: 'left', padding: '10px 12px', borderBottom: '2px solid #e5e7eb', fontWeight: 600, color: '#374151', fontSize: 12, textTransform: 'uppercase', letterSpacing: '.05em' }}>Personen</th>
+              <th style={{ textAlign: 'left', padding: '10px 12px', borderBottom: '2px solid #e5e7eb', fontWeight: 600, color: '#374151', fontSize: 12, textTransform: 'uppercase', letterSpacing: '.05em' }}>Status</th>
+              <th style={{ padding: '10px 12px', borderBottom: '2px solid #e5e7eb' }}></th>
             </tr>
           </thead>
           <tbody>
-            {bookings.map((b) => (
-              <tr key={b.id}>
-                <td style={{ padding: '16px 8px', borderBottom: '1px solid #f3f4f6' }}>{formatNlDate(b.tour_date)}</td>
-                <td style={{ padding: '16px 8px', borderBottom: '1px solid #f3f4f6' }}>{b.tour_time}</td>
-                <td style={{ padding: '16px 8px', borderBottom: '1px solid #f3f4f6' }}>{b.visitor_name}</td>
-                <td style={{ padding: '16px 8px', borderBottom: '1px solid #f3f4f6', fontSize: 14 }}>
-                  <span title="volwassenen">{b.total_people - (b.children_count ?? 0)}v</span>
-                  {' + '}
-                  <span title="kinderen">{b.children_count ?? 0}k</span>
-                  {' = '}
-                  <strong>{b.total_people}</strong>
-                </td>
-                <td style={{ padding: '16px 8px', borderBottom: '1px solid #f3f4f6' }}>
-                  <span
-                    style={{
-                      ...statusStyle(b.status),
-                      display: 'inline-block',
-                      borderRadius: 999,
-                      padding: '6px 14px',
-                      fontWeight: 600,
-                    }}
-                  >
-                    {b.status === 'pending' ? 'Afwachtend' : b.status === 'approved' ? 'Geaccepteerd' : 'Geweigerd'}
-                  </span>
-                </td>
-                <td style={{ padding: '16px 8px', borderBottom: '1px solid #f3f4f6', textAlign: 'right' }}>
-                  <button
-                    onClick={() => window.open(`/booking/${b.edit_token}`, '_blank')}
-                    style={{ marginRight: 10, background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 20 }}
-                    title="Bekijk boeking"
-                  >
-                    👁
-                  </button>
-                  <button
-                    onClick={() => openModalFor(b)}
-                    style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 20 }}
-                    title="Bewerk boeking"
-                  >
-                    ✎
-                  </button>
-                </td>
-              </tr>
-            ))}
+            {filteredBookings.map((b) => {
+              const isPast = b.tour_date < todayStr
+              return (
+                <tr key={b.id} style={{ opacity: isPast ? 0.55 : 1 }}>
+                  <td style={{ padding: '13px 12px', borderBottom: '1px solid #f3f4f6' }}>{formatNlDate(b.tour_date)}</td>
+                  <td style={{ padding: '13px 12px', borderBottom: '1px solid #f3f4f6', fontWeight: 600 }}>{b.tour_time}</td>
+                  <td style={{ padding: '13px 12px', borderBottom: '1px solid #f3f4f6' }}>
+                    <div style={{ fontWeight: 500 }}>{b.visitor_name}</div>
+                    <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 1 }}>{b.visitor_email}</div>
+                  </td>
+                  <td style={{ padding: '13px 12px', borderBottom: '1px solid #f3f4f6', fontSize: 13 }}>
+                    <span title="volwassenen">{b.total_people - (b.children_count ?? 0)}v</span>{' + '}
+                    <span title="kinderen">{b.children_count ?? 0}k</span>{' = '}
+                    <strong>{b.total_people}</strong>
+                  </td>
+                  <td style={{ padding: '13px 12px', borderBottom: '1px solid #f3f4f6' }}>
+                    <span style={{ ...statusStyle(b.status), display: 'inline-block', borderRadius: 999, padding: '4px 12px', fontWeight: 600, fontSize: 12 }}>
+                      {b.status === 'pending' ? 'Afwachtend' : b.status === 'approved' ? 'Geaccepteerd' : 'Geweigerd'}
+                    </span>
+                  </td>
+                  <td style={{ padding: '13px 12px', borderBottom: '1px solid #f3f4f6', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <button onClick={() => window.open(`/booking/${b.edit_token}`, '_blank')} style={{ marginRight: 6, background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 17, color: '#9ca3af' }} title="Bekijk boeking">👁</button>
+                    <button onClick={() => openModalFor(b)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 17, color: '#9ca3af' }} title="Bewerk boeking">✎</button>
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
-        {modalOpen && activeBooking && (
-          <div onClick={closeModal} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 40 }}>
-            <div onClick={(e) => e.stopPropagation()} style={{ position: 'relative', background: '#fff', borderRadius: 16, width: 980, maxWidth: '96%', padding: 24 }}>
+      )}
+
+      {/* ── Edit modal ── */}
+      {modalOpen && activeBooking && (
+        <div
+          onClick={closeModal}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 40, padding: 16 }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ position: 'relative', background: '#fff', borderRadius: 16, width: 820, maxWidth: '100%', maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 60px rgba(0,0,0,0.3)' }}
+          >
+            {/* Sticky header */}
+            <div style={{ padding: '18px 24px 14px', borderBottom: '1px solid #f3f4f6', flexShrink: 0 }}>
               <button
                 onClick={closeModal}
-                aria-label="Modal sluiten"
-                style={{ position: 'absolute', top: 12, right: 12, width: 36, height: 36, borderRadius: 999, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', fontSize: 20, lineHeight: 1 }}
-              >
-                ×
-              </button>
-              <h2 style={{ margin: 0, fontSize: 42, lineHeight: 1.05 }}>{formName || 'Boeking voornaam achternaam'}</h2>
-              <p style={{ color: '#6b7280', marginTop: 10 }}>Laatst gewijzigd: {new Date().toLocaleString('nl-BE')}</p>
+                aria-label="Sluiten"
+                style={{ position: 'absolute', top: 14, right: 14, width: 30, height: 30, borderRadius: 999, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', fontSize: 16, color: '#6b7280', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >×</button>
+              <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#111827' }}>{formName || 'Boeking'}</h2>
+              <p style={{ margin: '3px 0 0', fontSize: 12, color: '#9ca3af' }}>
+                Aangemaakt: {activeBooking.created_at ? new Date(activeBooking.created_at).toLocaleString('nl-BE') : '—'}
+              </p>
+            </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginTop: 20 }}>
-                <div style={{ paddingRight: 20, borderRight: '1px solid #e5e7eb' }}>
-                  <h3 style={{ fontSize: 28, marginTop: 0 }}>Klant gegevens</h3>
+            {/* Scrollable body */}
+            <div style={{ overflowY: 'auto', padding: '20px 24px', flexGrow: 1 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 28 }}>
+                {/* Left: Klantgegevens */}
+                <div style={{ paddingRight: 24, borderRight: '1px solid #f3f4f6' }}>
+                  <p style={{ margin: '0 0 14px', fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.06em' }}>Klantgegevens</p>
                   <label style={{ display: 'block', marginTop: 10 }}>
-                    Naam
-                    <input value={formName} onChange={(e) => setFormName(e.target.value)} style={{ display: 'block', marginTop: 6, width: '100%', padding: 12, borderRadius: 12, border: '1px solid #d1d5db' }} />
+                    <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Naam</span>
+                    <input value={formName} onChange={(e) => setFormName(e.target.value)} style={{ display: 'block', marginTop: 5, width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #d1d5db', fontSize: 14, boxSizing: 'border-box' }} />
                   </label>
                   <label style={{ display: 'block', marginTop: 12 }}>
-                    E-mailadres
-                    <input value={formEmail} onChange={(e) => setFormEmail(e.target.value)} style={{ display: 'block', marginTop: 6, width: '100%', padding: 12, borderRadius: 12, border: '1px solid #d1d5db' }} />
+                    <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>E-mailadres</span>
+                    <input value={formEmail} onChange={(e) => setFormEmail(e.target.value)} style={{ display: 'block', marginTop: 5, width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #d1d5db', fontSize: 14, boxSizing: 'border-box' }} />
                   </label>
                   <label style={{ display: 'block', marginTop: 12 }}>
-                    Telefoon nummer
-                    <input value={formPhone} onChange={(e) => setFormPhone(e.target.value)} style={{ display: 'block', marginTop: 6, width: '100%', padding: 12, borderRadius: 12, border: '1px solid #d1d5db' }} />
+                    <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Telefoonnummer</span>
+                    <input value={formPhone} onChange={(e) => setFormPhone(e.target.value)} style={{ display: 'block', marginTop: 5, width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #d1d5db', fontSize: 14, boxSizing: 'border-box' }} />
                   </label>
+                  {formVisitorMessage && (
+                    <div style={{ marginTop: 16 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Opmerking bezoeker</span>
+                      <p style={{ margin: '6px 0 0', padding: '9px 12px', borderRadius: 10, background: '#f9fafb', border: '1px solid #e5e7eb', fontSize: 14, color: '#374151' }}>{formVisitorMessage}</p>
+                    </div>
+                  )}
                 </div>
 
+                {/* Right: Boekingsgegevens */}
                 <div>
-                  <h3 style={{ fontSize: 28, marginTop: 0 }}>Boekingsgegevens</h3>
-                  <label style={{ display: 'block', marginTop: 10 }}>
-                    Status
-                    <select value={formStatus} onChange={(e) => setFormStatus(e.target.value)} style={{ ...statusStyle(formStatus), display: 'block', marginTop: 6, padding: '10px 14px', borderRadius: 999, fontWeight: 700 }}>
+                  <p style={{ margin: '0 0 14px', fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.06em' }}>Boekingsgegevens</p>
+
+                  <div>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Status</span>
+                    <select value={formStatus} onChange={(e) => setFormStatus(e.target.value)} style={{ ...statusStyle(formStatus), display: 'block', marginTop: 5, padding: '8px 12px', borderRadius: 999, fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
                       <option value="pending">Afwachtend</option>
                       <option value="approved">Geaccepteerd</option>
                       <option value="denied">Geweigerd</option>
                     </select>
-                  </label>
+                  </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 160px', gap: 12, marginTop: 12 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px', gap: 10, marginTop: 14 }}>
                     <label style={{ display: 'block' }}>
-                      Datum
-                      <input type="date" value={formDate} onChange={(e) => setFormDate(e.target.value)} style={{ display: 'block', marginTop: 6, width: '100%', padding: 12, borderRadius: 12, border: '1px solid #d1d5db' }} />
+                      <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Datum</span>
+                      <input type="date" value={formDate} onChange={(e) => setFormDate(e.target.value)} style={{ display: 'block', marginTop: 5, width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #d1d5db', fontSize: 14, boxSizing: 'border-box' }} />
                     </label>
                     <label style={{ display: 'block' }}>
-                      Tijdslot
-                      <input value={formTime} onChange={(e) => setFormTime(e.target.value)} style={{ display: 'block', marginTop: 6, width: '100%', padding: 12, borderRadius: 12, border: '1px solid #d1d5db' }} />
+                      <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Tijdslot</span>
+                      <input value={formTime} onChange={(e) => setFormTime(e.target.value)} style={{ display: 'block', marginTop: 5, width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #d1d5db', fontSize: 14, boxSizing: 'border-box' }} />
                     </label>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
                     <label style={{ display: 'block' }}>
-                      Volwassenen (+12j)
-                      <input type="number" min={1} value={formAdults} onChange={(e) => setFormAdults(Number(e.target.value || 1))} style={{ display: 'block', marginTop: 6, width: '100%', padding: 12, borderRadius: 12, border: '1px solid #d1d5db' }} />
+                      <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Volwassenen (+12j)</span>
+                      <input type="number" min={1} value={formAdults} onChange={(e) => setFormAdults(Number(e.target.value || 1))} style={{ display: 'block', marginTop: 5, width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #d1d5db', fontSize: 14, boxSizing: 'border-box' }} />
                     </label>
                     <label style={{ display: 'block' }}>
-                      Kinderen (-12j)
-                      <input type="number" min={0} value={formChildren} onChange={(e) => setFormChildren(Number(e.target.value || 0))} style={{ display: 'block', marginTop: 6, width: '100%', padding: 12, borderRadius: 12, border: '1px solid #d1d5db' }} />
+                      <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Kinderen (-12j)</span>
+                      <input type="number" min={0} value={formChildren} onChange={(e) => setFormChildren(Number(e.target.value || 0))} style={{ display: 'block', marginTop: 5, width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #d1d5db', fontSize: 14, boxSizing: 'border-box' }} />
                     </label>
                   </div>
                   <p style={{ margin: '6px 0 0', fontSize: 13, color: '#6b7280' }}>
-                    Totaal: <strong>{formAdults + formChildren} personen</strong>
+                    Totaal: <strong style={{ color: '#111827' }}>{formAdults + formChildren} personen</strong>
                   </p>
 
-                  {formVisitorMessage && (
-                    <div style={{ marginTop: 12 }}>
-                      <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#6b7280' }}>Opmerking bezoeker</p>
-                      <p style={{ margin: '6px 0 0', padding: 12, borderRadius: 12, background: '#f9fafb', border: '1px solid #e5e7eb', fontSize: 14 }}>{formVisitorMessage}</p>
-                    </div>
-                  )}
-
-                  <label style={{ display: 'block', marginTop: 12 }}>
-                    Bericht aan bezoeker (optioneel)
-                    <textarea value={formWorkerMessage} onChange={(e) => setFormWorkerMessage(e.target.value)} style={{ display: 'block', marginTop: 6, width: '100%', minHeight: 80, padding: 12, borderRadius: 12, border: '1px solid #d1d5db' }} />
+                  <label style={{ display: 'block', marginTop: 14 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Bericht aan bezoeker <span style={{ fontWeight: 400, color: '#9ca3af' }}>(optioneel)</span></span>
+                    <textarea value={formWorkerMessage} onChange={(e) => setFormWorkerMessage(e.target.value)} rows={3} style={{ display: 'block', marginTop: 5, width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #d1d5db', fontSize: 14, resize: 'vertical', boxSizing: 'border-box' }} />
                   </label>
 
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, cursor: 'pointer' }}>
                     <input type="checkbox" checked={notifyVisitor} onChange={(e) => setNotifyVisitor(e.target.checked)} />
-                    Mail klant over wijziging
+                    <span style={{ fontSize: 14, color: '#374151' }}>E-mail klant over wijziging</span>
                   </label>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 24 }}>
-                <button onClick={deleteActiveBooking} disabled={deletingModal || savingModal} style={{ padding: '12px 20px', borderRadius: 12, border: '1px solid #fecaca', color: '#dc2626', background: '#fee2e2' }}>{deletingModal ? 'Verwijderen…' : 'Verwijderen'}</button>
-                <div style={{ display: 'flex', gap: 10 }}>
-                  <button onClick={saveModalEdits} disabled={savingModal || deletingModal} style={{ padding: '12px 22px', borderRadius: 12, border: 'none', background: '#111827', color: '#fff', fontWeight: 700 }}>
-                    {savingModal ? 'Opslaan…' : 'Opslaan'}
-                  </button>
                 </div>
               </div>
             </div>
+
+            {/* Sticky footer */}
+            <div style={{ padding: '14px 24px', borderTop: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0, background: '#fff', borderRadius: '0 0 16px 16px' }}>
+              <button
+                onClick={deleteActiveBooking}
+                disabled={deletingModal || savingModal}
+                style={{ padding: '9px 16px', borderRadius: 10, border: '1px solid #fecaca', color: '#dc2626', background: '#fee2e2', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}
+              >
+                {deletingModal ? 'Verwijderen…' : '🗑 Verwijderen'}
+              </button>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  onClick={closeModal}
+                  style={{ padding: '9px 16px', borderRadius: 10, border: '1px solid #e5e7eb', background: '#fff', color: '#374151', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}
+                >
+                  Annuleren
+                </button>
+                <button
+                  onClick={saveModalEdits}
+                  disabled={savingModal || deletingModal}
+                  style={{ padding: '9px 20px', borderRadius: 10, border: 'none', background: '#111827', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}
+                >
+                  {savingModal ? 'Opslaan…' : 'Opslaan'}
+                </button>
+              </div>
+            </div>
           </div>
-        )}
-        </>
+        </div>
       )}
-      {message && <p style={{ color: 'red' }}>{message}</p>}
+
+      {message && (
+        <div style={{ marginTop: 14, padding: '10px 16px', borderRadius: 10, background: messageType === 'error' ? '#fef2f2' : '#f0fdf4', border: `1px solid ${messageType === 'error' ? '#fecaca' : '#bbf7d0'}`, color: messageType === 'error' ? '#dc2626' : '#16a34a', fontSize: 14 }}>
+          {message}
+        </div>
+      )}
     </div>
   )
 }

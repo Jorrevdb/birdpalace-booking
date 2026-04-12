@@ -223,6 +223,15 @@ interface BookingForm {
 export default function BookingClient({ initialSiteTitle, initialSettings }: { initialSiteTitle?: string; initialSettings?: Settings }) {
   const [step, setStep] = useState<Step>(1)
   const [siteTitle, setSiteTitle] = useState(initialSiteTitle ?? (initialSettings?.site_name ?? 'Boek een tour'))
+
+  // Page copy — editable via admin settings
+  const [copyStep1Subtitle, setCopyStep1Subtitle] = useState(initialSettings?.copy_step1_subtitle ?? 'Kies een datum en tijdslot')
+  const [copyStep2Subtitle, setCopyStep2Subtitle] = useState(initialSettings?.copy_step2_subtitle ?? 'Vertel ons meer over jullie groep')
+  const [copyStep3Subtitle, setCopyStep3Subtitle] = useState(initialSettings?.copy_step3_subtitle ?? 'Jouw contactgegevens')
+  const [copyConfirmTitle, setCopyConfirmTitle] = useState(initialSettings?.copy_confirm_title ?? 'Aanvraag ontvangen!')
+  const [copyConfirmBody, setCopyConfirmBody] = useState(initialSettings?.copy_confirm_body ?? 'Wij checken bij de pinguïns en toerako\'s of dit past — dat kan tot 2 werkdagen duren.')
+  const [copyNoSlotsText, setCopyNoSlotsText] = useState(initialSettings?.copy_no_slots_text ?? '')
+
   const [availability, setAvailability] = useState<Record<string, string[]>>({})
   const [loadingAvailability, setLoadingAvailability] = useState(true)
   const [selectedMonth, setSelectedMonth] = useState(new Date())
@@ -262,17 +271,26 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
     fetchAvailability(selectedMonth)
   }, [selectedMonth, fetchAvailability])
 
+  function applySettings(s: Settings) {
+    if (s.site_name) setSiteTitle(s.site_name)
+    if (s.primary_color) {
+      const raw = String(s.primary_color)
+      const color = raw.startsWith('#') ? raw : `#${raw}`
+      document.documentElement.style.setProperty('--primary-color-600', color)
+    }
+    if (s.copy_step1_subtitle) setCopyStep1Subtitle(s.copy_step1_subtitle)
+    if (s.copy_step2_subtitle) setCopyStep2Subtitle(s.copy_step2_subtitle)
+    if (s.copy_step3_subtitle) setCopyStep3Subtitle(s.copy_step3_subtitle)
+    if (s.copy_confirm_title)  setCopyConfirmTitle(s.copy_confirm_title)
+    if (s.copy_confirm_body)   setCopyConfirmBody(s.copy_confirm_body)
+    if (s.copy_no_slots_text !== undefined) setCopyNoSlotsText(s.copy_no_slots_text ?? '')
+  }
+
   useEffect(() => {
     // apply initial settings from server on first mount (avoid flicker)
     if (initialSettings) {
       try {
-        if (initialSettings.site_name) setSiteTitle(initialSettings.site_name)
-        if (initialSettings.primary_color) {
-          const raw = String(initialSettings.primary_color)
-          const color = raw.startsWith('#') ? raw : `#${raw}`
-          // Only set --primary-color-600; globals.css derives 700/50/100 via color-mix()
-          document.documentElement.style.setProperty('--primary-color-600', color)
-        }
+        applySettings(initialSettings)
       } catch (err) {}
     }
     async function onSettingsUpdate(e?: any) {
@@ -280,8 +298,8 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
       fetchAvailability(selectedMonth)
       try {
         const s = e?.detail || null
-        if (s && s.site_name) {
-          setSiteTitle(s.site_name)
+        if (s) {
+          applySettings(s)
           return
         }
       } catch (err) {}
@@ -289,7 +307,7 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
         const res = await fetch('/api/settings')
         const data = await res.json()
         const s = data.settings || {}
-        if (s.site_name) setSiteTitle(s.site_name)
+        applySettings(s)
       } catch (err) {}
     }
 
@@ -301,7 +319,7 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
           const res = await fetch('/api/settings')
           const data = await res.json()
           const s = data.settings || {}
-          if (s.site_name) setSiteTitle(s.site_name)
+          applySettings(s)
         } catch (err) {}
       }
     })()
@@ -368,7 +386,7 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
       <div className="min-h-screen bg-gray-50 py-8 px-4">
         <div className="max-w-lg mx-auto">
           <h1 className="text-2xl font-bold text-center text-gray-900 mb-1">{siteTitle}</h1>
-          <p className="text-center text-gray-500 text-sm mb-6">Kies een datum en tijdslot</p>
+          <p className="text-center text-gray-500 text-sm mb-6">{copyStep1Subtitle}</p>
           <StepIndicator currentStep={1} />
 
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
@@ -476,11 +494,16 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
                       /* ── Situation 2: day has no scheduled slots ── */
                       <>
                         <p className="text-sm text-gray-600 mb-3">
-                          Op{' '}
-                          <span className="text-brand-700 font-medium">
-                            {format(parseISO(form.tour_date), 'd MMMM', { locale: nl })}
-                          </span>{' '}
-                          zijn we <strong>niet open</strong>, past enkel dan? Stel een moment voor en we kijken of het past!
+                          {copyNoSlotsText
+                            ? copyNoSlotsText
+                            : <>
+                                Op{' '}
+                                <span className="text-brand-700 font-medium">
+                                  {format(parseISO(form.tour_date), 'd MMMM', { locale: nl })}
+                                </span>{' '}
+                                zijn we <strong>niet open</strong>, past enkel dan? Stel een moment voor en we kijken of het past!
+                              </>
+                          }
                         </p>
                         <TimeInput
                           resetKey={timeInputResetKey}
@@ -519,7 +542,7 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
       <div className="min-h-screen bg-gray-50 py-8 px-4">
         <div className="max-w-lg mx-auto">
           <h1 className="text-2xl font-bold text-center text-gray-900 mb-1">{siteTitle}</h1>
-          <p className="text-center text-gray-500 text-sm mb-6">Vertel ons meer over jullie groep</p>
+          <p className="text-center text-gray-500 text-sm mb-6">{copyStep2Subtitle}</p>
           <StepIndicator currentStep={2} />
 
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
@@ -609,7 +632,7 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
       <div className="min-h-screen bg-gray-50 py-8 px-4">
         <div className="max-w-lg mx-auto">
           <h1 className="text-2xl font-bold text-center text-gray-900 mb-1">{siteTitle}</h1>
-          <p className="text-center text-gray-500 text-sm mb-6">Jouw contactgegevens</p>
+          <p className="text-center text-gray-500 text-sm mb-6">{copyStep3Subtitle}</p>
           <StepIndicator currentStep={3} />
 
           <form onSubmit={handleSubmit}>
@@ -725,14 +748,12 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Aanvraag ontvangen!</h2>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">{copyConfirmTitle}</h2>
           <p className="text-gray-700 mb-1">
             We hebben een bevestigingsmail gestuurd naar{' '}
             <span className="font-semibold text-gray-900">{form.visitor_email}</span>.
           </p>
-          <p className="text-gray-500 text-sm mb-6">
-            Wij checken bij de pinguïns en toerako's of dit past — dat kan tot 2 werkdagen duren.
-          </p>
+          <p className="text-gray-500 text-sm mb-6">{copyConfirmBody}</p>
 
           <div className="bg-brand-50 rounded-xl p-4 text-sm text-gray-700 space-y-1 text-left mb-6">
             <p>

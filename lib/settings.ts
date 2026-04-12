@@ -3,6 +3,7 @@ import { TOUR_TIMES as DEFAULT_TOUR_TIMES, TOUR_DURATION_MINUTES as DEFAULT_DURA
 import { unstable_noStore as noStore } from 'next/cache'
 
 export type Settings = {
+  // ── Algemeen ──────────────────────────────────────────────────────────────
   site_name?: string
   contact_email?: string
   tour_duration_minutes?: number
@@ -15,6 +16,28 @@ export type Settings = {
   planning_tabs?: any
   worker_message_accepted_default?: string
   worker_message_denied_default?: string
+
+  // ── E-mail templates ──────────────────────────────────────────────────────
+  // Visitor: booking received
+  email_received_subject?: string
+  email_received_intro?: string
+  // Visitor: booking approved
+  email_approved_subject?: string
+  email_approved_intro?: string
+  // Visitor: booking denied
+  email_denied_subject?: string
+  email_denied_intro?: string
+  // Worker: new booking notification
+  email_worker_subject?: string
+  email_worker_intro?: string
+
+  // ── Pagina copy ───────────────────────────────────────────────────────────
+  copy_step1_subtitle?: string   // "Kies een datum en tijdslot"
+  copy_step2_subtitle?: string   // "Vertel ons meer over jullie groep"
+  copy_step3_subtitle?: string   // "Jouw contactgegevens"
+  copy_confirm_title?: string    // "Aanvraag ontvangen!"
+  copy_confirm_body?: string     // "Wij checken bij de pinguïns..."
+  copy_no_slots_text?: string    // shown when selected date has no available slots
 }
 
 export type WeeklyDayConfig = {

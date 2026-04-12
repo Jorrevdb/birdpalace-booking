@@ -1,7 +1,7 @@
 import { Resend } from 'resend'
 import { Booking, Worker } from '@/types'
-import { getSettings, getSiteName, getSiteUrl, getContactEmail } from './settings'
-import { format, parseISO } from 'date-fns'
+import { getSettings, getSiteName, getSiteUrl, getContactEmail, getTourDuration } from './settings'
+import { format, parseISO, addMinutes } from 'date-fns'
 import { nl } from 'date-fns/locale'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
@@ -41,7 +41,6 @@ function getBrandColor(s: Awaited<ReturnType<typeof getSettings>>) {
 }
 
 function darken(hex: string): string {
-  // Simple darkening: reduce each channel by ~15%
   const r = parseInt(hex.slice(1, 3), 16)
   const g = parseInt(hex.slice(3, 5), 16)
   const b = parseInt(hex.slice(5, 7), 16)
@@ -50,7 +49,6 @@ function darken(hex: string): string {
 }
 
 function lighten(hex: string): string {
-  // ~10% brand color mixed with white for subtle background
   const r = parseInt(hex.slice(1, 3), 16)
   const g = parseInt(hex.slice(3, 5), 16)
   const b = parseInt(hex.slice(5, 7), 16)
@@ -62,7 +60,56 @@ function formatDate(dateStr: string) {
   return format(parseISO(dateStr), 'EEEE d MMMM yyyy', { locale: nl })
 }
 
-// ── Visitor: booking received ────────────────────©─────────────────────────────
+/** Compute tour end time string from "HH:mm" start + duration in minutes. */
+function computeEndTime(tourTime: string, durationMinutes: number): string {
+  try {
+    const [h, m] = tourTime.split(':').map(Number)
+    const base = new Date(2000, 0, 1, h, m)
+    const end = addMinutes(base, durationMinutes)
+    return format(end, 'HH:mm')
+  } catch {
+    return tourTime
+  }
+}
+
+// ── Template engine ───────────────────────────────────────────────────────────
+
+/** Replace all {{key}} occurrences in a template string with the matching variable value. */
+export function fillTemplate(template: string, vars: Record<string, string>): string {
+  return template.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? `{{${key}}}`)
+}
+
+/** Build the full set of template variables from a booking + optional worker + settings. */
+export function buildTemplateVars(
+  booking: Booking,
+  s: Awaited<ReturnType<typeof getSettings>>,
+  opts: { worker?: Worker; siteUrl?: string; bookingToken?: string } = {}
+): Record<string, string> {
+  const siteName = getSiteName(s.site_name)
+  const siteUrl = opts.siteUrl ?? getSiteUrl((s as any).site_url)
+  const contactEmail = getContactEmail(s.contact_email)
+  const durationMins = getTourDuration(s.tour_duration_minutes)
+  const adults = booking.total_people - (booking.children_count ?? 0)
+
+  return {
+    visitor_name:    booking.visitor_name ?? '',
+    visitor_email:   booking.visitor_email ?? '',
+    visitor_phone:   booking.visitor_phone ?? '',
+    tour_date:       formatDate(booking.tour_date),
+    tour_time:       booking.tour_time ?? '',
+    tour_time_start: booking.tour_time ?? '',
+    tour_time_end:   computeEndTime(booking.tour_time ?? '00:00', durationMins),
+    total_people:    String(booking.total_people ?? 0),
+    adults_count:    String(adults),
+    children_count:  String(booking.children_count ?? 0),
+    site_name:       siteName,
+    contact_email:   contactEmail,
+    booking_url:     booking.edit_token ? `${siteUrl}/booking/${booking.edit_token}` : '',
+    worker_name:     opts.worker?.name ?? '',
+  }
+}
+
+// ── Visitor: booking received ─────────────────────────────────────────────────
 export async function sendBookingReceivedEmail(booking: Booking): Promise<{ ok: boolean; error?: unknown }> {
   try {
     const from = await getFrom()
@@ -70,14 +117,24 @@ export async function sendBookingReceivedEmail(booking: Booking): Promise<{ ok: 
     const siteUrl = getSiteUrl((s as any).site_url)
     const contact = getContactEmail(s.contact_email)
     const brand = getBrandColor(s)
+    const vars = buildTemplateVars(booking, s, { siteUrl })
+
+    const subject = s.email_received_subject
+      ? fillTemplate(s.email_received_subject, vars)
+      : `Aanvraag ontvangen – ${formatDate(booking.tour_date)} om ${booking.tour_time}`
+
+    const introHtml = s.email_received_intro
+      ? `<p>${fillTemplate(s.email_received_intro, vars).replace(/\n/g, '<br>')}</p>`
+      : `<p>We hebben jouw boekingsaanvraag goed ontvangen. Een medewerker zal deze zo snel mogelijk bevestigen.</p>`
+
     const result = await resend.emails.send({
       from,
       to: booking.visitor_email,
-      subject: `Aanvraag ontvangen – ${formatDate(booking.tour_date)} om ${booking.tour_time}`,
+      subject,
       html: `
         <div style="font-family:sans-serif;max-width:560px;margin:0 auto;color:#1a1a1a">
           <h2 style="color:${brand}">Hoi ${booking.visitor_name}!</h2>
-          <p>We hebben jouw boekingsaanvraag goed ontvangen. Een medewerker zal deze zo snel mogelijk bevestigen.</p>
+          ${introHtml}
           <table style="width:100%;border-collapse:collapse;margin:24px 0">
             <tr><td style="padding:8px 0;color:#666;width:160px">Datum</td><td style="padding:8px 0;font-weight:600">${formatDate(booking.tour_date)}</td></tr>
             <tr><td style="padding:8px 0;color:#666">Tijdslot</td><td style="padding:8px 0;font-weight:600">${booking.tour_time}</td></tr>
@@ -113,14 +170,24 @@ export async function sendWorkerNotificationEmail(
     const siteUrl = getSiteUrl((s as any).site_url)
     const brand = getBrandColor(s)
     const respondUrl = `${siteUrl}/worker/respond/${responseToken}`
+    const vars = buildTemplateVars(booking, s, { worker, siteUrl })
+
+    const subject = s.email_worker_subject
+      ? fillTemplate(s.email_worker_subject, vars)
+      : `Nieuw boekingsverzoek – ${formatDate(booking.tour_date)} om ${booking.tour_time}`
+
+    const introHtml = s.email_worker_intro
+      ? `<p>${fillTemplate(s.email_worker_intro, vars).replace(/\n/g, '<br>')}</p>`
+      : `<p>Er is een nieuwe touraanvraag binnengekomen. Kun jij de tour begeleiden?</p>`
+
     const result = await resend.emails.send({
       from,
       to: worker.email,
-      subject: `Nieuw boekingsverzoek – ${formatDate(booking.tour_date)} om ${booking.tour_time}`,
+      subject,
       html: `
         <div style="font-family:sans-serif;max-width:560px;margin:0 auto;color:#1a1a1a">
           <h2 style="color:${brand}">Hoi ${worker.name}!</h2>
-          <p>Er is een nieuwe touraanvraag binnengekomen. Kun jij de tour begeleiden?</p>
+          ${introHtml}
           <table style="width:100%;border-collapse:collapse;margin:24px 0">
             <tr><td style="padding:8px 0;color:#666;width:160px">Datum</td><td style="padding:8px 0;font-weight:600">${formatDate(booking.tour_date)}</td></tr>
             <tr><td style="padding:8px 0;color:#666">Tijdslot</td><td style="padding:8px 0;font-weight:600">${booking.tour_time}</td></tr>
@@ -160,14 +227,24 @@ export async function sendBookingApprovedEmail(
     const siteUrl = getSiteUrl((s as any).site_url)
     const brand = getBrandColor(s)
     const brandLight = lighten(brand)
+    const vars = buildTemplateVars(booking, s, { siteUrl })
+
+    const subject = s.email_approved_subject
+      ? fillTemplate(s.email_approved_subject, vars)
+      : `Tour bevestigd! – ${formatDate(booking.tour_date)} om ${booking.tour_time}`
+
+    const introHtml = s.email_approved_intro
+      ? `<p>${fillTemplate(s.email_approved_intro, vars).replace(/\n/g, '<br>')}</p>`
+      : `<p>Goed nieuws, ${booking.visitor_name}! Je aanvraag voor een rondleiding bij Bird Palace is goedgekeurd.</p>`
+
     await resend.emails.send({
       from,
       to: booking.visitor_email,
-      subject: `Tour bevestigd! – ${formatDate(booking.tour_date)} om ${booking.tour_time}`,
+      subject,
       html: `
         <div style="font-family:sans-serif;max-width:560px;margin:0 auto;color:#1a1a1a">
           <h2 style="color:${brand}">Jullie tour is bevestigd! 🎉</h2>
-          <p>Goed nieuws, ${booking.visitor_name}! Je aanvraag voor een rondleiding bij Bird Palace is goedgekeurd.</p>
+          ${introHtml}
           <table style="width:100%;border-collapse:collapse;margin:24px 0">
             <tr><td style="padding:8px 0;color:#666;width:160px">Datum</td><td style="padding:8px 0;font-weight:600">${formatDate(booking.tour_date)}</td></tr>
             <tr><td style="padding:8px 0;color:#666">Tijdslot</td><td style="padding:8px 0;font-weight:600">${booking.tour_time}</td></tr>
@@ -197,14 +274,24 @@ export async function sendBookingDeniedEmail(
     const siteUrl = getSiteUrl((s as any).site_url)
     const contact = getContactEmail(s.contact_email)
     const brand = getBrandColor(s)
+    const vars = buildTemplateVars(booking, s, { siteUrl })
+
+    const subject = s.email_denied_subject
+      ? fillTemplate(s.email_denied_subject, vars)
+      : `Helaas – ${formatDate(booking.tour_date)} om ${booking.tour_time} niet beschikbaar`
+
+    const introHtml = s.email_denied_intro
+      ? `<p>${fillTemplate(s.email_denied_intro, vars).replace(/\n/g, '<br>')}</p>`
+      : `<p>We kunnen de tour op ${formatDate(booking.tour_date)} om ${booking.tour_time} niet bevestigen.</p>`
+
     await resend.emails.send({
       from,
       to: booking.visitor_email,
-      subject: `Helaas – ${formatDate(booking.tour_date)} om ${booking.tour_time} niet beschikbaar`,
+      subject,
       html: `
         <div style="font-family:sans-serif;max-width:560px;margin:0 auto;color:#1a1a1a">
           <h2 style="color:#dc2626">Helaas...</h2>
-          <p>We kunnen de tour op ${formatDate(booking.tour_date)} om ${booking.tour_time} niet bevestigen.</p>
+          ${introHtml}
           ${workerMessage ? `<blockquote style="border-left:4px solid #dc2626;margin:0;padding:12px 16px;background:#fef2f2">${workerMessage}</blockquote>` : ''}
           <div style="margin-top:24px">
             <a href="${siteUrl}/booking/${booking.edit_token}" style="display:inline-block;margin-right:12px;padding:12px 24px;background:${brand};color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Bekijk boekingsstatus</a>

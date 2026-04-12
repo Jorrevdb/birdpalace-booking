@@ -164,25 +164,8 @@ function AdminPageInner() {
       {/* Main */}
       <main style={{ flex: 1, overflow: 'auto' }}>
         {/* Header */}
-        <div style={{ padding: '24px 32px 0', borderBottom: '1px solid #e5e7eb', background: '#fff' }}>
-          <h1 style={{ margin: '0 0 18px', fontSize: 22, fontWeight: 800, color: '#111827' }}>{pageTitle}</h1>
-          <div style={{ display: 'flex', gap: 0 }}>
-            {NAV_ITEMS.map(({ id, label }) => (
-              <button
-                key={id}
-                onClick={() => setTab(id)}
-                style={{
-                  padding: '8px 16px', border: 'none', background: 'transparent', cursor: 'pointer',
-                  fontSize: 14, fontWeight: tab === id ? 700 : 400,
-                  color: tab === id ? '#111827' : '#6b7280',
-                  borderBottom: tab === id ? '2px solid #111827' : '2px solid transparent',
-                  marginBottom: -1, transition: 'all .15s',
-                }}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+        <div style={{ padding: '22px 32px', borderBottom: '1px solid #e5e7eb', background: '#fff' }}>
+          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#111827' }}>{pageTitle}</h1>
         </div>
 
         {/* Content */}
@@ -1117,18 +1100,182 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
   )
 }
 
+// ── Settings: shared helpers ──────────────────────────────────────────────────
+function SettingsField({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 5 }}>{label}</label>
+      {hint && <p style={{ margin: '0 0 6px', fontSize: 12, color: '#9ca3af', lineHeight: 1.5 }}>{hint}</p>}
+      {children}
+    </div>
+  )
+}
+
+const SF_INPUT: React.CSSProperties = { display: 'block', width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #d1d5db', fontSize: 14, boxSizing: 'border-box', outline: 'none', fontFamily: 'inherit' }
+const SF_TEXTAREA: React.CSSProperties = { ...SF_INPUT, minHeight: 80, resize: 'vertical' }
+
+// Placeholder chips that insert into a target ref
+type PlaceholderDef = { key: string; label: string; example: string }
+
+function PlaceholderChips({ placeholders, targetRef }: { placeholders: PlaceholderDef[]; targetRef: React.RefObject<HTMLTextAreaElement | HTMLInputElement | null> }) {
+  const [hovered, setHovered] = useState<string | null>(null)
+
+  function insert(placeholder: string) {
+    const el = targetRef.current
+    if (!el) return
+    const start = el.selectionStart ?? el.value.length
+    const end = el.selectionEnd ?? el.value.length
+    const newVal = el.value.slice(0, start) + placeholder + el.value.slice(end)
+    // Trigger React synthetic change
+    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set
+      ?? Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set
+    nativeInputValueSetter?.call(el, newVal)
+    el.dispatchEvent(new Event('input', { bubbles: true }))
+    el.focus()
+    const pos = start + placeholder.length
+    requestAnimationFrame(() => el.setSelectionRange(pos, pos))
+  }
+
+  return (
+    <div style={{ marginTop: 10, padding: '10px 12px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e5e7eb' }}>
+      <div style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        Klik om in te voegen
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        {placeholders.map(({ key, label, example }) => (
+          <div key={key} style={{ position: 'relative' }}>
+            <button
+              type="button"
+              onClick={() => insert(`{{${key}}}`)}
+              onMouseEnter={() => setHovered(key)}
+              onMouseLeave={() => setHovered(null)}
+              style={{
+                padding: '4px 10px',
+                borderRadius: 6,
+                border: '1px solid #c7d2fe',
+                background: hovered === key ? '#4f46e5' : '#eef2ff',
+                fontSize: 12,
+                cursor: 'pointer',
+                color: hovered === key ? '#fff' : '#4f46e5',
+                fontFamily: 'monospace',
+                fontWeight: 500,
+                transition: 'all 0.12s',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {`{{${key}}}`}
+            </button>
+            {hovered === key && (
+              <div style={{
+                position: 'absolute',
+                bottom: 'calc(100% + 6px)',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                background: '#1f2937',
+                color: '#fff',
+                borderRadius: 6,
+                padding: '6px 10px',
+                fontSize: 11,
+                whiteSpace: 'nowrap',
+                zIndex: 50,
+                pointerEvents: 'none',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
+              }}>
+                <div style={{ fontWeight: 600, marginBottom: 2 }}>{label}</div>
+                <div style={{ color: '#9ca3af', fontSize: 10 }}>Voorbeeld: <span style={{ color: '#d1fae5' }}>{example}</span></div>
+                {/* Arrow */}
+                <div style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  width: 0, height: 0,
+                  borderLeft: '5px solid transparent',
+                  borderRight: '5px solid transparent',
+                  borderTop: '5px solid #1f2937',
+                }} />
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+const COMMON_PLACEHOLDERS: PlaceholderDef[] = [
+  { key: 'visitor_name',   label: 'Naam bezoeker',      example: 'Jan Janssen' },
+  { key: 'tour_date',      label: 'Tourdatum',           example: 'zaterdag 24 mei 2025' },
+  { key: 'tour_time',      label: 'Tijdslot',            example: '10:00' },
+  { key: 'tour_time_start',label: 'Starttijd tour',      example: '10:00' },
+  { key: 'tour_time_end',  label: 'Eindtijd tour',       example: '11:30' },
+  { key: 'total_people',   label: 'Totaal personen',     example: '8' },
+  { key: 'adults_count',   label: 'Aantal volwassenen',  example: '5' },
+  { key: 'children_count', label: 'Aantal kinderen',     example: '3' },
+  { key: 'site_name',      label: 'Sitenaam',            example: 'Bird Palace' },
+]
+const BOOKING_PLACEHOLDERS: PlaceholderDef[] = [
+  ...COMMON_PLACEHOLDERS,
+  { key: 'booking_url',    label: 'Boekingslink',        example: 'https://birdpalace.be/booking/abc123' },
+  { key: 'contact_email',  label: 'Contactmail',         example: 'info@birdpalace.be' },
+]
+const WORKER_PLACEHOLDERS: PlaceholderDef[] = [
+  ...COMMON_PLACEHOLDERS,
+  { key: 'worker_name',    label: 'Naam medewerker',     example: 'Tanja' },
+  { key: 'visitor_email',  label: 'E-mail bezoeker',     example: 'jan@email.be' },
+  { key: 'visitor_phone',  label: 'Telefoon bezoeker',   example: '+32 470 12 34 56' },
+]
+
+type SettingsSection = 'algemeen' | 'emails' | 'paginas' | 'geavanceerd'
+
 function SettingsPanel({ password }: { password: string }) {
   const [loading, setLoading] = useState(false)
-  const [settings, setSettings] = useState<any>({})
+  const [saving, setSaving] = useState(false)
+  const [section, setSection] = useState<SettingsSection>('algemeen')
+  const [saveMsg, setSaveMsg] = useState<{ text: string; ok: boolean } | null>(null)
+
+  // ── Algemeen ──
   const [siteName, setSiteName] = useState('')
   const [contactEmail, setContactEmail] = useState('')
   const [tourDuration, setTourDuration] = useState('90')
-  const [tourTimes, setTourTimes] = useState('11:00,13:00,15:00')
-  const [primaryColor, setPrimaryColor] = useState('var(--primary-color-600)')
+  const [primaryColor, setPrimaryColor] = useState('#16a34a')
+
+  // ── E-mails ──
+  const [emailReceivedSubject, setEmailReceivedSubject] = useState('')
+  const [emailReceivedIntro, setEmailReceivedIntro] = useState('')
+  const [emailApprovedSubject, setEmailApprovedSubject] = useState('')
+  const [emailApprovedIntro, setEmailApprovedIntro] = useState('')
+  const [emailDeniedSubject, setEmailDeniedSubject] = useState('')
+  const [emailDeniedIntro, setEmailDeniedIntro] = useState('')
+  const [emailWorkerSubject, setEmailWorkerSubject] = useState('')
+  const [emailWorkerIntro, setEmailWorkerIntro] = useState('')
+  const [workerMsgDefault, setWorkerMsgDefault] = useState('')
+  const [activeEmailTab, setActiveEmailTab] = useState<'received' | 'approved' | 'denied' | 'worker'>('received')
+
+  // Refs for placeholder insertion
+  const refReceivedSubject = useRef<HTMLInputElement>(null)
+  const refReceivedIntro = useRef<HTMLTextAreaElement>(null)
+  const refApprovedSubject = useRef<HTMLInputElement>(null)
+  const refApprovedIntro = useRef<HTMLTextAreaElement>(null)
+  const refDeniedSubject = useRef<HTMLInputElement>(null)
+  const refDeniedIntro = useRef<HTMLTextAreaElement>(null)
+  const refWorkerSubject = useRef<HTMLInputElement>(null)
+  const refWorkerIntro = useRef<HTMLTextAreaElement>(null)
+  const refWorkerMsgDefault = useRef<HTMLTextAreaElement>(null)
+
+  // ── Pagina's ──
+  const [copyStep1, setCopyStep1] = useState('')
+  const [copyStep2, setCopyStep2] = useState('')
+  const [copyStep3, setCopyStep3] = useState('')
+  const [copyConfirmTitle, setCopyConfirmTitle] = useState('')
+  const [copyConfirmBody, setCopyConfirmBody] = useState('')
+  const [copyNoSlots, setCopyNoSlots] = useState('')
+
+  // ── Geavanceerd ──
   const [bookingFormFields, setBookingFormFields] = useState('')
-  const [workerMessageAcceptedDefault, setWorkerMessageAcceptedDefault] = useState('Alles in orde. Tot ziens!')
-  const [workerMessageDeniedDefault, setWorkerMessageDeniedDefault] = useState('Helaas kan ik niet beschikbaar zijn.')
-  const [message, setMessage] = useState('')
+
+  // Stored full settings (to merge on save)
+  const [allSettings, setAllSettings] = useState<any>({})
 
   async function fetchSettings() {
     setLoading(true)
@@ -1137,87 +1284,315 @@ function SettingsPanel({ password }: { password: string }) {
       if (!res.ok) throw new Error('Unauthorized')
       const data = await res.json()
       const s = data.settings ?? {}
-      setSettings(s)
-      setSiteName(s.site_name ?? '')
-      setContactEmail(s.contact_email ?? '')
-      setTourDuration(s.tour_duration_minutes ? String(s.tour_duration_minutes) : '90')
-      setTourTimes(s.tour_times ?? '11:00,13:00,15:00')
-      setPrimaryColor(s.primary_color ?? 'var(--primary-color-600)')
-      setBookingFormFields(s.booking_form_fields ? JSON.stringify(s.booking_form_fields) : '')
-      setWorkerMessageAcceptedDefault(s.worker_message_accepted_default ?? 'Alles in orde. Tot ziens!')
-      setWorkerMessageDeniedDefault(s.worker_message_denied_default ?? 'Helaas kan ik niet beschikbaar zijn.')
+      setAllSettings(s)
+      hydrate(s)
     } catch (err: any) {
-      setMessage(err.message || 'Failed to fetch settings')
+      setSaveMsg({ text: err.message || 'Laden mislukt', ok: false })
     } finally {
       setLoading(false)
     }
   }
 
+  function hydrate(s: any) {
+    // Algemeen
+    setSiteName(s.site_name ?? '')
+    setContactEmail(s.contact_email ?? '')
+    setTourDuration(s.tour_duration_minutes ? String(s.tour_duration_minutes) : '90')
+    const rawColor = s.primary_color ?? '#16a34a'
+    setPrimaryColor(rawColor.startsWith('#') ? rawColor : `#${rawColor}`)
+    // E-mails
+    setEmailReceivedSubject(s.email_received_subject ?? 'Aanvraag ontvangen – {{tour_date}} om {{tour_time}}')
+    setEmailReceivedIntro(s.email_received_intro ?? 'We hebben jouw boekingsaanvraag goed ontvangen. Een medewerker zal deze zo snel mogelijk bevestigen.')
+    setEmailApprovedSubject(s.email_approved_subject ?? 'Tour bevestigd! – {{tour_date}} om {{tour_time}}')
+    setEmailApprovedIntro(s.email_approved_intro ?? 'Goed nieuws, {{visitor_name}}! Je aanvraag voor een rondleiding bij Bird Palace is goedgekeurd.')
+    setEmailDeniedSubject(s.email_denied_subject ?? 'Helaas – {{tour_date}} om {{tour_time}} niet beschikbaar')
+    setEmailDeniedIntro(s.email_denied_intro ?? 'We kunnen de tour op {{tour_date}} om {{tour_time}} niet bevestigen.')
+    setEmailWorkerSubject(s.email_worker_subject ?? 'Nieuw boekingsverzoek – {{tour_date}} om {{tour_time}}')
+    setEmailWorkerIntro(s.email_worker_intro ?? 'Er is een nieuwe touraanvraag binnengekomen. Kun jij de tour begeleiden?')
+    setWorkerMsgDefault(s.worker_message_accepted_default ?? 'Alles in orde. Tot ziens!')
+    // Pagina's
+    setCopyStep1(s.copy_step1_subtitle ?? 'Kies een datum en tijdslot')
+    setCopyStep2(s.copy_step2_subtitle ?? 'Vertel ons meer over jullie groep')
+    setCopyStep3(s.copy_step3_subtitle ?? 'Jouw contactgegevens')
+    setCopyConfirmTitle(s.copy_confirm_title ?? 'Aanvraag ontvangen!')
+    setCopyConfirmBody(s.copy_confirm_body ?? "Wij checken bij de pinguïns en toerako's of dit past — dat kan tot 2 werkdagen duren.")
+    setCopyNoSlots(s.copy_no_slots_text ?? 'Op {{date}} zijn we niet open, past enkel dan? Stel een moment voor en we kijken of het past!')
+    // Geavanceerd
+    setBookingFormFields(s.booking_form_fields ? JSON.stringify(s.booking_form_fields, null, 2) : '')
+  }
+
   useEffect(() => { fetchSettings() }, [])
 
   async function save() {
-    setMessage('')
+    setSaving(true)
+    setSaveMsg(null)
     try {
       const payload: any = {
+        ...allSettings,
+        // Algemeen
         site_name: siteName,
         contact_email: contactEmail,
         tour_duration_minutes: Number(tourDuration || 90),
-        tour_times: tourTimes,
         primary_color: primaryColor,
-        worker_message_accepted_default: workerMessageAcceptedDefault,
-        worker_message_denied_default: workerMessageDeniedDefault,
+        // E-mails
+        email_received_subject: emailReceivedSubject,
+        email_received_intro: emailReceivedIntro,
+        email_approved_subject: emailApprovedSubject,
+        email_approved_intro: emailApprovedIntro,
+        email_denied_subject: emailDeniedSubject,
+        email_denied_intro: emailDeniedIntro,
+        email_worker_subject: emailWorkerSubject,
+        email_worker_intro: emailWorkerIntro,
+        worker_message_accepted_default: workerMsgDefault,
+        // Pagina's
+        copy_step1_subtitle: copyStep1,
+        copy_step2_subtitle: copyStep2,
+        copy_step3_subtitle: copyStep3,
+        copy_confirm_title: copyConfirmTitle,
+        copy_confirm_body: copyConfirmBody,
+        copy_no_slots_text: copyNoSlots,
       }
-      if (bookingFormFields) {
-        try { payload.booking_form_fields = JSON.parse(bookingFormFields) } catch (e) { payload.booking_form_fields = bookingFormFields }
+      if (bookingFormFields.trim()) {
+        try { payload.booking_form_fields = JSON.parse(bookingFormFields) } catch { payload.booking_form_fields = bookingFormFields }
       }
 
-      const res = await fetch('/api/admin/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password, settings: payload }) })
-      if (!res.ok) throw new Error('Save failed')
+      const res = await fetch('/api/admin/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password, settings: payload }),
+      })
+      if (!res.ok) throw new Error('Opslaan mislukt')
       const data = await res.json()
-      setMessage('Saved')
-      setSettings(data.settings ?? {})
-      try {
-        window.dispatchEvent(new CustomEvent('settings:updated', { detail: data.settings ?? {} }))
-      } catch (e) {
-        // ignore in non-browser environments
-      }
-      try {
-        localStorage.setItem('settings:updated', JSON.stringify({ ts: Date.now(), settings: data.settings ?? {} }))
-      } catch (e) {}
+      setAllSettings(data.settings ?? payload)
+      setSaveMsg({ text: 'Instellingen opgeslagen', ok: true })
+      try { window.dispatchEvent(new CustomEvent('settings:updated', { detail: data.settings ?? payload })) } catch {}
+      try { localStorage.setItem('settings:updated', JSON.stringify({ ts: Date.now(), settings: data.settings ?? payload })) } catch {}
+      setTimeout(() => setSaveMsg(null), 3000)
     } catch (err: any) {
-      setMessage(err.message || 'Error saving')
+      setSaveMsg({ text: err.message || 'Fout bij opslaan', ok: false })
+    } finally {
+      setSaving(false)
     }
   }
 
+  const SECTIONS: { id: SettingsSection; label: string; icon: string }[] = [
+    { id: 'algemeen', label: 'Algemeen', icon: '🏠' },
+    { id: 'emails', label: 'E-mails', icon: '📧' },
+    { id: 'paginas', label: "Pagina's & Formulier", icon: '📝' },
+    { id: 'geavanceerd', label: 'Geavanceerd', icon: '⚙️' },
+  ]
+
+  const EMAIL_TABS: { id: typeof activeEmailTab; label: string; desc: string }[] = [
+    { id: 'received', label: 'Aanvraag ontvangen', desc: 'Bezoeker ontvangt dit na het insturen van een boekingsaanvraag.' },
+    { id: 'approved', label: 'Tour bevestigd', desc: 'Bezoeker ontvangt dit wanneer de boeking wordt goedgekeurd.' },
+    { id: 'denied', label: 'Tour geweigerd', desc: 'Bezoeker ontvangt dit wanneer de boeking wordt afgewezen.' },
+    { id: 'worker', label: 'Worker notificatie', desc: 'Medewerker ontvangt dit bij een nieuwe aanvraag.' },
+  ]
+
+  if (loading) return <div style={{ padding: '48px 0', color: '#9ca3af' }}>Laden…</div>
+
   return (
-    <div style={{ maxWidth: 720 }}>
-      {loading ? <p>Loading…</p> : (
-        <>
-          <label style={{ display: 'block', marginTop: 8 }}>Site name
-            <input value={siteName} onChange={(e) => setSiteName(e.target.value)} style={{ display: 'block', marginTop: 6, width: '100%' }} />
-          </label>
-          <label style={{ display: 'block', marginTop: 8 }}>Contact email
-            <input value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} style={{ display: 'block', marginTop: 6, width: '100%' }} />
-          </label>
-          <label style={{ display: 'block', marginTop: 8 }}>Tour duration (minutes)
-            <input value={tourDuration} onChange={(e) => setTourDuration(e.target.value)} style={{ display: 'block', marginTop: 6 }} />
-          </label>
-          <label style={{ display: 'block', marginTop: 8 }}>Primary color
-            <input type="color" value={primaryColor.startsWith('#') ? primaryColor : '#6366f1'} onChange={(e) => setPrimaryColor(e.target.value)} style={{ display: 'block', marginTop: 6, width: 48, height: 36, padding: 2, cursor: 'pointer' }} />
-          </label>
-          <label style={{ display: 'block', marginTop: 8 }}>Booking form fields (JSON)
-            <textarea value={bookingFormFields} onChange={(e) => setBookingFormFields(e.target.value)} style={{ display: 'block', marginTop: 6, width: '100%' }} placeholder='e.g. [{"id":"children_count","label":"Children"}]' />
-          </label>
-          <h3 style={{ marginTop: 20, marginBottom: 8 }}>Default worker messages</h3>
-          <label style={{ display: 'block', marginTop: 8 }}>Default message when accepting
-            <textarea value={workerMessageAcceptedDefault} onChange={(e) => setWorkerMessageAcceptedDefault(e.target.value)} style={{ display: 'block', marginTop: 6, width: '100%', minHeight: 60 }} placeholder='Default message for accepted bookings' />
-          </label>
-          <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
-            <button onClick={save} style={{ padding: '8px 12px' }}>Save settings</button>
+    <div style={{ display: 'flex', gap: 0, maxWidth: 900 }}>
+      {/* Section nav */}
+      <div style={{ width: 200, flexShrink: 0, paddingRight: 24, borderRight: '1px solid #e5e7eb' }}>
+        {SECTIONS.map(({ id, label, icon }) => (
+          <button
+            key={id}
+            onClick={() => setSection(id)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '9px 12px',
+              borderRadius: 8, border: 'none', background: section === id ? '#f3f4f6' : 'transparent',
+              color: section === id ? '#111827' : '#6b7280', fontWeight: section === id ? 600 : 400,
+              fontSize: 14, cursor: 'pointer', textAlign: 'left', marginBottom: 2,
+            }}
+          >
+            <span>{icon}</span>{label}
+          </button>
+        ))}
+      </div>
+
+      {/* Section content */}
+      <div style={{ flex: 1, paddingLeft: 28 }}>
+
+        {/* ── ALGEMEEN ── */}
+        {section === 'algemeen' && (
+          <div>
+            <h2 style={{ margin: '0 0 20px', fontSize: 17, fontWeight: 700 }}>Algemeen</h2>
+            <SettingsField label="Sitenaam" hint="Verschijnt als paginatitel en in e-mails.">
+              <input value={siteName} onChange={e => setSiteName(e.target.value)} style={SF_INPUT} placeholder="Bird Palace" />
+            </SettingsField>
+            <SettingsField label="Contacte-mail" hint="Wordt getoond aan bezoekers als contactadres.">
+              <input value={contactEmail} onChange={e => setContactEmail(e.target.value)} style={SF_INPUT} placeholder="info@birdpalace.be" type="email" />
+            </SettingsField>
+            <SettingsField label="Tour duur (minuten)">
+              <input value={tourDuration} onChange={e => setTourDuration(e.target.value)} style={{ ...SF_INPUT, width: 100 }} type="number" min={15} />
+            </SettingsField>
+            <SettingsField label="Primaire kleur" hint="Gebruikt voor knoppen, links en accenten.">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <input type="color" value={primaryColor} onChange={e => { setPrimaryColor(e.target.value); document.documentElement.style.setProperty('--primary-color-600', e.target.value) }} style={{ width: 52, height: 40, padding: 2, cursor: 'pointer', borderRadius: 8, border: '1px solid #d1d5db' }} />
+                <input value={primaryColor} onChange={e => setPrimaryColor(e.target.value)} style={{ ...SF_INPUT, width: 120 }} placeholder="#16a34a" />
+              </div>
+            </SettingsField>
           </div>
-          {message && <p style={{ marginTop: 8 }}>{message}</p>}
-        </>
-      )}
+        )}
+
+        {/* ── E-MAILS ── */}
+        {section === 'emails' && (
+          <div>
+            <h2 style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 700 }}>E-mail templates</h2>
+            <p style={{ margin: '0 0 20px', fontSize: 13, color: '#6b7280' }}>Gebruik placeholders zoals <code style={{ background: '#f3f4f6', padding: '1px 5px', borderRadius: 4 }}>{'{{visitor_name}}'}</code> — klik op een placeholder om hem in te voegen.</p>
+
+            {/* Email sub-tabs */}
+            <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid #e5e7eb', marginBottom: 24 }}>
+              {EMAIL_TABS.map(({ id, label }) => (
+                <button key={id} onClick={() => setActiveEmailTab(id)} style={{ padding: '8px 14px', border: 'none', background: 'transparent', fontSize: 13, fontWeight: activeEmailTab === id ? 700 : 400, color: activeEmailTab === id ? '#111827' : '#6b7280', borderBottom: activeEmailTab === id ? '2px solid #111827' : '2px solid transparent', cursor: 'pointer', marginBottom: -1 }}>
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {activeEmailTab === 'received' && (
+              <div>
+                <p style={{ margin: '0 0 16px', fontSize: 13, color: '#9ca3af' }}>{EMAIL_TABS[0].desc}</p>
+                <SettingsField label="Onderwerpregel">
+                  <input ref={refReceivedSubject} value={emailReceivedSubject} onChange={e => setEmailReceivedSubject(e.target.value)} style={SF_INPUT} />
+                  <PlaceholderChips placeholders={BOOKING_PLACEHOLDERS} targetRef={refReceivedSubject} />
+                </SettingsField>
+                <SettingsField label="Introductietekst" hint="De hoofdparagraaf bovenaan de e-mail.">
+                  <textarea ref={refReceivedIntro} value={emailReceivedIntro} onChange={e => setEmailReceivedIntro(e.target.value)} style={SF_TEXTAREA} rows={4} />
+                  <PlaceholderChips placeholders={BOOKING_PLACEHOLDERS} targetRef={refReceivedIntro} />
+                </SettingsField>
+              </div>
+            )}
+
+            {activeEmailTab === 'approved' && (
+              <div>
+                <p style={{ margin: '0 0 16px', fontSize: 13, color: '#9ca3af' }}>{EMAIL_TABS[1].desc}</p>
+                <SettingsField label="Onderwerpregel">
+                  <input ref={refApprovedSubject} value={emailApprovedSubject} onChange={e => setEmailApprovedSubject(e.target.value)} style={SF_INPUT} />
+                  <PlaceholderChips placeholders={BOOKING_PLACEHOLDERS} targetRef={refApprovedSubject} />
+                </SettingsField>
+                <SettingsField label="Introductietekst">
+                  <textarea ref={refApprovedIntro} value={emailApprovedIntro} onChange={e => setEmailApprovedIntro(e.target.value)} style={SF_TEXTAREA} rows={4} />
+                  <PlaceholderChips placeholders={BOOKING_PLACEHOLDERS} targetRef={refApprovedIntro} />
+                </SettingsField>
+              </div>
+            )}
+
+            {activeEmailTab === 'denied' && (
+              <div>
+                <p style={{ margin: '0 0 16px', fontSize: 13, color: '#9ca3af' }}>{EMAIL_TABS[2].desc}</p>
+                <SettingsField label="Onderwerpregel">
+                  <input ref={refDeniedSubject} value={emailDeniedSubject} onChange={e => setEmailDeniedSubject(e.target.value)} style={SF_INPUT} />
+                  <PlaceholderChips placeholders={BOOKING_PLACEHOLDERS} targetRef={refDeniedSubject} />
+                </SettingsField>
+                <SettingsField label="Introductietekst">
+                  <textarea ref={refDeniedIntro} value={emailDeniedIntro} onChange={e => setEmailDeniedIntro(e.target.value)} style={SF_TEXTAREA} rows={4} />
+                  <PlaceholderChips placeholders={BOOKING_PLACEHOLDERS} targetRef={refDeniedIntro} />
+                </SettingsField>
+              </div>
+            )}
+
+            {activeEmailTab === 'worker' && (
+              <div>
+                <p style={{ margin: '0 0 16px', fontSize: 13, color: '#9ca3af' }}>{EMAIL_TABS[3].desc}</p>
+                <SettingsField label="Onderwerpregel">
+                  <input ref={refWorkerSubject} value={emailWorkerSubject} onChange={e => setEmailWorkerSubject(e.target.value)} style={SF_INPUT} />
+                  <PlaceholderChips placeholders={WORKER_PLACEHOLDERS} targetRef={refWorkerSubject} />
+                </SettingsField>
+                <SettingsField label="Introductietekst">
+                  <textarea ref={refWorkerIntro} value={emailWorkerIntro} onChange={e => setEmailWorkerIntro(e.target.value)} style={SF_TEXTAREA} rows={3} />
+                  <PlaceholderChips placeholders={WORKER_PLACEHOLDERS} targetRef={refWorkerIntro} />
+                </SettingsField>
+                <SettingsField label="Standaardbericht bij acceptatie" hint="Wordt vooraf ingevuld in het 'Bericht aan bezoeker'-veld wanneer een boeking wordt goedgekeurd.">
+                  <textarea ref={refWorkerMsgDefault} value={workerMsgDefault} onChange={e => setWorkerMsgDefault(e.target.value)} style={SF_TEXTAREA} rows={3} />
+                  <PlaceholderChips placeholders={BOOKING_PLACEHOLDERS} targetRef={refWorkerMsgDefault} />
+                </SettingsField>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── PAGINA'S ── */}
+        {section === 'paginas' && (
+          <div>
+            <h2 style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 700 }}>Pagina's & Formulier</h2>
+            <p style={{ margin: '0 0 20px', fontSize: 13, color: '#6b7280' }}>Teksten die bezoekers zien op de boekingspagina.</p>
+
+            <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10, padding: '12px 16px', marginBottom: 24 }}>
+              <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: '#374151' }}>Stap-ondertitels</p>
+              <p style={{ margin: '4px 0 0', fontSize: 12, color: '#9ca3af' }}>Kleine tekst onder de hoofdtitel op elke stap van het formulier.</p>
+            </div>
+
+            <SettingsField label="Stap 1 — Ondertitel">
+              <input value={copyStep1} onChange={e => setCopyStep1(e.target.value)} style={SF_INPUT} placeholder="Kies een datum en tijdslot" />
+            </SettingsField>
+            <SettingsField label="Stap 2 — Ondertitel">
+              <input value={copyStep2} onChange={e => setCopyStep2(e.target.value)} style={SF_INPUT} placeholder="Vertel ons meer over jullie groep" />
+            </SettingsField>
+            <SettingsField label="Stap 3 — Ondertitel">
+              <input value={copyStep3} onChange={e => setCopyStep3(e.target.value)} style={SF_INPUT} placeholder="Jouw contactgegevens" />
+            </SettingsField>
+
+            <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10, padding: '12px 16px', margin: '8px 0 24px' }}>
+              <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: '#374151' }}>Bevestigingspagina</p>
+              <p style={{ margin: '4px 0 0', fontSize: 12, color: '#9ca3af' }}>Getoond nadat een bezoeker zijn aanvraag heeft ingediend.</p>
+            </div>
+
+            <SettingsField label="Bevestiging — Titel">
+              <input value={copyConfirmTitle} onChange={e => setCopyConfirmTitle(e.target.value)} style={SF_INPUT} placeholder="Aanvraag ontvangen!" />
+            </SettingsField>
+            <SettingsField label="Bevestiging — Ondertekst">
+              <textarea value={copyConfirmBody} onChange={e => setCopyConfirmBody(e.target.value)} style={SF_TEXTAREA} rows={3} />
+            </SettingsField>
+
+            <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10, padding: '12px 16px', margin: '8px 0 24px' }}>
+              <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: '#374151' }}>Geen tijdsloten beschikbaar</p>
+              <p style={{ margin: '4px 0 0', fontSize: 12, color: '#9ca3af' }}>Tekst die verschijnt als een bezoeker een dag selecteert zonder ingeplande tijdsloten. Gebruik <code style={{ background: '#e5e7eb', padding: '1px 4px', borderRadius: 3 }}>{'{{date}}'}</code> voor de geselecteerde datum.</p>
+            </div>
+
+            <SettingsField label="Tekst bij geen tijdsloten">
+              <textarea value={copyNoSlots} onChange={e => setCopyNoSlots(e.target.value)} style={SF_TEXTAREA} rows={3} />
+            </SettingsField>
+          </div>
+        )}
+
+        {/* ── GEAVANCEERD ── */}
+        {section === 'geavanceerd' && (
+          <div>
+            <h2 style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 700 }}>Geavanceerd</h2>
+            <p style={{ margin: '0 0 20px', fontSize: 13, color: '#6b7280' }}>Technische configuratie voor gevorderde gebruikers.</p>
+
+            <SettingsField
+              label="Formuliervelden (JSON)"
+              hint="Definieer extra of aangepaste velden voor het boekingsformulier als JSON-array. Laat leeg voor de standaardvelden."
+            >
+              <textarea
+                value={bookingFormFields}
+                onChange={e => setBookingFormFields(e.target.value)}
+                style={{ ...SF_TEXTAREA, fontFamily: 'monospace', fontSize: 12, minHeight: 120 }}
+                placeholder={'[\n  {"id": "children_count", "label": "Kinderen"}\n]'}
+              />
+            </SettingsField>
+          </div>
+        )}
+
+        {/* Save button */}
+        <div style={{ marginTop: 28, paddingTop: 20, borderTop: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button
+            onClick={save}
+            disabled={saving}
+            style={{ padding: '10px 24px', borderRadius: 10, border: 'none', background: '#111827', color: '#fff', fontWeight: 700, fontSize: 14, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1 }}
+          >
+            {saving ? 'Opslaan…' : 'Instellingen opslaan'}
+          </button>
+          {saveMsg && (
+            <span style={{ fontSize: 13, color: saveMsg.ok ? '#16a34a' : '#dc2626', fontWeight: 500 }}>
+              {saveMsg.ok ? '✓ ' : '✕ '}{saveMsg.text}
+            </span>
+          )}
+        </div>
+      </div>
     </div>
   )
 }

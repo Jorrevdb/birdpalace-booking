@@ -245,6 +245,15 @@ function DashboardPanel({ password, onNavigate }: { password: string; onNavigate
   const [approvingBooking, setApprovingBooking] = useState<any | null>(null)
   const [approveMessage, setApproveMessage] = useState('')
   const [approving, setApproving] = useState(false)
+  const [defaultApproveMsg, setDefaultApproveMsg] = useState('')
+
+  // Load default approve message from settings once
+  useEffect(() => {
+    fetch('/api/settings')
+      .then(r => r.json())
+      .then(d => { if (d.settings?.worker_message_accepted_default) setDefaultApproveMsg(d.settings.worker_message_accepted_default) })
+      .catch(() => {})
+  }, [])
 
   const todayStr = new Date().toISOString().slice(0, 10)
   const in14Str = (() => { const d = new Date(); d.setDate(d.getDate() + 14); return d.toISOString().slice(0, 10) })()
@@ -379,7 +388,7 @@ function DashboardPanel({ password, onNavigate }: { password: string; onNavigate
                     </div>
                     <div style={{ display: 'flex', gap: 6, flexShrink: 0, marginLeft: 12 }}>
                       <button
-                        onClick={() => { setApprovingBooking(b); setApproveMessage('') }}
+                        onClick={() => { setApprovingBooking(b); setApproveMessage(defaultApproveMsg) }}
                         style={{ padding: '5px 12px', borderRadius: 8, border: 'none', background: 'var(--primary-color-600)', color: '#fff', fontWeight: 600, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' }}
                       >
                         ✓ Accepteren
@@ -520,7 +529,7 @@ function DashboardPanel({ password, onNavigate }: { password: string; onNavigate
           {/* Message */}
           <div style={{ padding: '20px 24px' }}>
             <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6 }}>
-              Persoonlijk bericht <span style={{ fontWeight: 400, color: '#9ca3af' }}>(optioneel)</span>
+              Bericht voor de bezoeker <span style={{ fontWeight: 400, color: '#9ca3af' }}>(optioneel)</span>
             </label>
             <textarea
               value={approveMessage}
@@ -528,10 +537,10 @@ function DashboardPanel({ password, onNavigate }: { password: string; onNavigate
               placeholder="Bijv. Welkom! We kijken ernaar uit jullie te ontvangen."
               rows={3}
               disabled={approving}
-              style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid #d1d5db', fontSize: 14, resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit', color: '#111827', outline: 'none' }}
+              style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid #d1d5db', fontSize: 14, resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit', color: '#111827', outline: 'none', background: approving ? '#f9fafb' : '#fff' }}
             />
             <p style={{ margin: '6px 0 0', fontSize: 12, color: '#9ca3af' }}>
-              Dit bericht wordt opgenomen in de bevestigingsmail aan de bezoeker.
+              Vooraf ingevuld met het standaardbericht uit instellingen. Pas gerust aan — dit wordt opgenomen in de bevestigingsmail.
             </p>
           </div>
 

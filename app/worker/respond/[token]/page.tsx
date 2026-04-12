@@ -10,11 +10,11 @@ function WorkerRespondInner({ token }: { token: string }) {
 
   const [status, setStatus] = useState<'loading' | 'success' | 'error' | 'idle'>('idle')
   const [message, setMessage] = useState('')
-  const [result, setResult] = useState<string>('')
   const [settings, setSettings] = useState<Settings | null>(null)
+  const [errorMsg, setErrorMsg] = useState('')
+  const [redirectCount, setRedirectCount] = useState(2)
 
   useEffect(() => {
-    // Fetch settings to get default messages
     async function fetchSettings() {
       try {
         const res = await fetch('/api/settings')
@@ -30,48 +30,48 @@ function WorkerRespondInner({ token }: { token: string }) {
   }, [])
 
   useEffect(() => {
-    // If accept action is in URL, initialize with default message
     if (action === 'accept' && settings?.worker_message_accepted_default) {
       setMessage(settings.worker_message_accepted_default)
     }
   }, [action, settings])
 
-  async function handleRespond(action: 'accept' | 'decline') {
+  // Countdown redirect after successful accept
+  useEffect(() => {
+    if (status !== 'success') return
+    if (redirectCount <= 0) {
+      window.location.href = '/admin'
+      return
+    }
+    const t = setTimeout(() => setRedirectCount(c => c - 1), 1000)
+    return () => clearTimeout(t)
+  }, [status, redirectCount])
+
+  async function handleRespond(respondAction: 'accept' | 'decline') {
     setStatus('loading')
-    
-    // Use default message only if message is truly empty
     let finalMessage = message
     if (!finalMessage.trim() && settings?.worker_message_accepted_default) {
       finalMessage = settings.worker_message_accepted_default
     }
-    
     try {
       const res = await fetch(`/api/worker/respond/${token}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, message: finalMessage }),
+        body: JSON.stringify({ action: respondAction, message: finalMessage }),
       })
       const data = await res.json()
-
       if (data.already_handled) {
-        setResult(data.message)
-        setStatus('success')
+        setErrorMsg(data.message)
+        setStatus('error')
         return
       }
-
       if (res.ok) {
-        setResult(
-          action === 'accept'
-            ? 'Je hebt de boeking geaccepteerd. De bezoeker krijgt een bevestigingsmail.'
-            : 'Je hebt de boeking geweigerd.'
-        )
         setStatus('success')
       } else {
-        setResult(data.error ?? 'Er is iets misgegaan.')
+        setErrorMsg(data.error ?? 'Er is iets misgegaan.')
         setStatus('error')
       }
     } catch {
-      setResult('Kon de server niet bereiken.')
+      setErrorMsg('Kon de server niet bereiken.')
       setStatus('error')
     }
   }
@@ -86,8 +86,19 @@ function WorkerRespondInner({ token }: { token: string }) {
 
   if (status === 'success') {
     return (
-      <div className="bg-brand-50 border border-brand-600 rounded-2xl p-6 text-center">
-        <p className="text-brand-700 font-medium">{result}</p>
+      <div className="bg-brand-50 border border-brand-600 rounded-2xl p-6 text-center space-y-3">
+        <div className="text-3xl">✓</div>
+        <p className="text-brand-700 font-semibold text-lg">Boeking bevestigd!</p>
+        <p className="text-brand-600 text-sm">De bezoeker krijgt een bevestigingsmail.</p>
+        <p className="text-gray-400 text-xs">
+          Je wordt doorgestuurd naar het dashboard in {redirectCount}s…
+        </p>
+        <button
+          onClick={() => { window.location.href = '/admin' }}
+          className="text-brand-600 text-sm font-medium underline"
+        >
+          Ga nu naar dashboard →
+        </button>
       </div>
     )
   }
@@ -95,37 +106,37 @@ function WorkerRespondInner({ token }: { token: string }) {
   if (status === 'error') {
     return (
       <div className="bg-red-50 border border-red-200 rounded-2xl p-6 text-center">
-        <p className="text-red-800">{result}</p>
+        <p className="text-red-800">{errorMsg}</p>
       </div>
     )
   }
 
-  // Manual response
+  // Manual response form
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-4">
-      <p className="text-gray-700">Kan jij deze tour begeleiden?</p>
+      <p className="text-gray-700 font-medium">Kan jij deze tour begeleiden?</p>
 
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1.5">
-          Bericht (optioneel)
+          Bericht voor de bezoeker <span className="font-normal text-gray-400">(optioneel)</span>
         </label>
-        <p className="text-xs text-gray-500 mb-2">
-          Standaard: <em>{settings?.worker_message_accepted_default || 'Alles in orde. Tot ziens!'}</em>
-        </p>
         <textarea
           className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-brand-600 text-gray-900 placeholder:text-gray-400 resize-none"
           rows={3}
-          placeholder="Voeg een bericht toe voor de bezoeker (optioneel, anders wordt standaard bericht gebruikt)..."
+          placeholder="Bijv. Welkom! We kijken ernaar uit jullie te ontvangen."
           value={message}
           onChange={(e) => setMessage(e.target.value)}
         />
+        <p className="text-xs text-gray-400 mt-1">
+          Dit bericht verschijnt in de bevestigingsmail aan de bezoeker.
+        </p>
       </div>
 
       <button
         onClick={() => handleRespond('accept')}
         className="w-full py-3 bg-brand-600 text-white rounded-xl font-semibold hover:bg-brand-700 transition-colors"
       >
-        ✓ Ik accepteer de tour
+        ✓ Boeking bevestigen
       </button>
     </div>
   )

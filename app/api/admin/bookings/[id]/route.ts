@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import { sendBookingUpdatedEmail } from '@/lib/email'
+import { sendBookingApprovedEmail, sendBookingUpdatedEmail } from '@/lib/email'
 import { createBookingEvent, updateBookingEvent, deleteBookingEvent } from '@/lib/googleCalendar'
 
 function getAdminPassword() {
@@ -81,7 +81,17 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     }
 
     if (notify) {
-      await sendBookingUpdatedEmail(updated as any)
+      const wasApproved = currentBooking?.status === 'approved'
+      const isNowApproved = updated.status === 'approved'
+      const justApproved = !wasApproved && isNowApproved
+
+      if (justApproved) {
+        // Newly approved → send the proper "tour bevestigd" approval email
+        await sendBookingApprovedEmail(updated as any, '')
+      } else {
+        // Other status changes (re-scheduled, updated fields, etc.)
+        await sendBookingUpdatedEmail(updated as any)
+      }
     }
 
     return NextResponse.json({ ok: true, booking: updated })

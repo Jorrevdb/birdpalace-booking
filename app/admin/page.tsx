@@ -1350,6 +1350,23 @@ const WORKER_PLACEHOLDERS: PlaceholderDef[] = [
   { key: 'visitor_phone',  label: 'Telefoon bezoeker',   example: '+32 470 12 34 56' },
 ]
 
+const PAGE_COMMON_PLACEHOLDERS: PlaceholderDef[] = [
+  { key: 'site_name',      label: 'Sitenaam',            example: 'Bird Palace' },
+  { key: 'contact_email',  label: 'Contactmail',         example: 'info@birdpalace.be' },
+]
+
+const PAGE_BOOKING_PLACEHOLDERS: PlaceholderDef[] = [
+  ...PAGE_COMMON_PLACEHOLDERS,
+  { key: 'visitor_name',   label: 'Naam bezoeker',       example: 'Jan Janssen' },
+  { key: 'tour_date',      label: 'Tourdatum',           example: 'Zaterdag 24 mei' },
+  { key: 'tour_time',      label: 'Tijdslot',            example: '10:00' },
+]
+
+const PAGE_DATE_PLACEHOLDERS: PlaceholderDef[] = [
+  { key: 'date',           label: 'Geselecteerde datum', example: 'Zaterdag 24 mei' },
+  { key: 'tour_date',      label: 'Tourdatum',           example: 'Zaterdag 24 mei' },
+]
+
 type SettingsSection = 'algemeen' | 'emails' | 'paginas' | 'geavanceerd'
 
 function SettingsPanel({ password }: { password: string }) {
@@ -1386,6 +1403,12 @@ function SettingsPanel({ password }: { password: string }) {
   const refWorkerSubject = useRef<HTMLInputElement>(null)
   const refWorkerIntro = useRef<HTMLTextAreaElement>(null)
   const refWorkerMsgDefault = useRef<HTMLTextAreaElement>(null)
+  const refCopyStep1 = useRef<HTMLInputElement>(null)
+  const refCopyStep2 = useRef<HTMLInputElement>(null)
+  const refCopyStep3 = useRef<HTMLInputElement>(null)
+  const refCopyConfirmTitle = useRef<HTMLInputElement>(null)
+  const refCopyConfirmBody = useRef<HTMLTextAreaElement>(null)
+  const refCopyNoSlots = useRef<HTMLTextAreaElement>(null)
 
   // ── Pagina's ──
   const [copyStep1, setCopyStep1] = useState('')
@@ -1649,13 +1672,16 @@ function SettingsPanel({ password }: { password: string }) {
             </div>
 
             <SettingsField label="Stap 1 — Ondertitel">
-              <input value={copyStep1} onChange={e => setCopyStep1(e.target.value)} style={SF_INPUT} placeholder="Kies een datum en tijdslot" />
+              <input ref={refCopyStep1} value={copyStep1} onChange={e => setCopyStep1(e.target.value)} style={SF_INPUT} placeholder="Kies een datum en tijdslot" />
+              <PlaceholderChips placeholders={PAGE_COMMON_PLACEHOLDERS} targetRef={refCopyStep1} />
             </SettingsField>
             <SettingsField label="Stap 2 — Ondertitel">
-              <input value={copyStep2} onChange={e => setCopyStep2(e.target.value)} style={SF_INPUT} placeholder="Vertel ons meer over jullie groep" />
+              <input ref={refCopyStep2} value={copyStep2} onChange={e => setCopyStep2(e.target.value)} style={SF_INPUT} placeholder="Vertel ons meer over jullie groep" />
+              <PlaceholderChips placeholders={PAGE_COMMON_PLACEHOLDERS} targetRef={refCopyStep2} />
             </SettingsField>
             <SettingsField label="Stap 3 — Ondertitel">
-              <input value={copyStep3} onChange={e => setCopyStep3(e.target.value)} style={SF_INPUT} placeholder="Jouw contactgegevens" />
+              <input ref={refCopyStep3} value={copyStep3} onChange={e => setCopyStep3(e.target.value)} style={SF_INPUT} placeholder="Jouw contactgegevens" />
+              <PlaceholderChips placeholders={PAGE_COMMON_PLACEHOLDERS} targetRef={refCopyStep3} />
             </SettingsField>
 
             <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10, padding: '12px 16px', margin: '8px 0 24px' }}>
@@ -1664,19 +1690,22 @@ function SettingsPanel({ password }: { password: string }) {
             </div>
 
             <SettingsField label="Bevestiging — Titel">
-              <input value={copyConfirmTitle} onChange={e => setCopyConfirmTitle(e.target.value)} style={SF_INPUT} placeholder="Aanvraag ontvangen!" />
+              <input ref={refCopyConfirmTitle} value={copyConfirmTitle} onChange={e => setCopyConfirmTitle(e.target.value)} style={SF_INPUT} placeholder="Aanvraag ontvangen!" />
+              <PlaceholderChips placeholders={PAGE_BOOKING_PLACEHOLDERS} targetRef={refCopyConfirmTitle} />
             </SettingsField>
             <SettingsField label="Bevestiging — Ondertekst">
-              <textarea value={copyConfirmBody} onChange={e => setCopyConfirmBody(e.target.value)} style={SF_TEXTAREA} rows={3} />
+              <textarea ref={refCopyConfirmBody} value={copyConfirmBody} onChange={e => setCopyConfirmBody(e.target.value)} style={SF_TEXTAREA} rows={3} />
+              <PlaceholderChips placeholders={PAGE_BOOKING_PLACEHOLDERS} targetRef={refCopyConfirmBody} />
             </SettingsField>
 
             <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10, padding: '12px 16px', margin: '8px 0 24px' }}>
               <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: '#374151' }}>Geen tijdsloten beschikbaar</p>
-              <p style={{ margin: '4px 0 0', fontSize: 12, color: '#9ca3af' }}>Tekst die verschijnt als een bezoeker een dag selecteert zonder ingeplande tijdsloten. Gebruik <code style={{ background: '#e5e7eb', padding: '1px 4px', borderRadius: 3 }}>{'{{date}}'}</code> voor de geselecteerde datum.</p>
+              <p style={{ margin: '4px 0 0', fontSize: 12, color: '#9ca3af' }}>Tekst die verschijnt als een bezoeker een dag selecteert zonder ingeplande tijdsloten. Gebruik <code style={{ background: '#e5e7eb', padding: '1px 4px', borderRadius: 3 }}>{'{{date}}'}</code> of <code style={{ background: '#e5e7eb', padding: '1px 4px', borderRadius: 3 }}>{'{{tour_date}}'}</code> voor de geselecteerde datum.</p>
             </div>
 
             <SettingsField label="Tekst bij geen tijdsloten">
-              <textarea value={copyNoSlots} onChange={e => setCopyNoSlots(e.target.value)} style={SF_TEXTAREA} rows={3} />
+              <textarea ref={refCopyNoSlots} value={copyNoSlots} onChange={e => setCopyNoSlots(e.target.value)} style={SF_TEXTAREA} rows={3} />
+              <PlaceholderChips placeholders={PAGE_DATE_PLACEHOLDERS} targetRef={refCopyNoSlots} />
             </SettingsField>
           </div>
         )}

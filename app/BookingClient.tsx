@@ -223,6 +223,7 @@ interface BookingForm {
 export default function BookingClient({ initialSiteTitle, initialSettings }: { initialSiteTitle?: string; initialSettings?: Settings }) {
   const [step, setStep] = useState<Step>(1)
   const [siteTitle, setSiteTitle] = useState(initialSiteTitle ?? (initialSettings?.site_name ?? 'Boek een tour'))
+  const [contactEmail, setContactEmail] = useState(initialSettings?.contact_email ?? '')
 
   // Page copy — editable via admin settings
   const [copyStep1Subtitle, setCopyStep1Subtitle] = useState(initialSettings?.copy_step1_subtitle ?? 'Kies een datum en tijdslot')
@@ -254,6 +255,42 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
     visitor_message: '',
   })
 
+  function capitalizeFirst(value: string) {
+    if (!value) return value
+    return value.charAt(0).toUpperCase() + value.slice(1)
+  }
+
+  function formatDateShort(dateStr: string) {
+    try {
+      return capitalizeFirst(format(parseISO(dateStr), 'EEEE d MMMM', { locale: nl }))
+    } catch {
+      return dateStr
+    }
+  }
+
+  function fillTemplateClient(template: string, vars: Record<string, string>) {
+    return template.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? `{{${key}}}`)
+  }
+
+  function buildPageTemplateVars() {
+    const dateShort = form.tour_date ? formatDateShort(form.tour_date) : ''
+    return {
+      site_name: siteTitle ?? '',
+      contact_email: contactEmail ?? '',
+      tour_date: dateShort,
+      date: dateShort,
+      tour_time: form.tour_time ?? '',
+      visitor_name: form.visitor_name ?? '',
+    }
+  }
+
+  function renderNoSlotsCopy(text: string) {
+    if (!text) return ''
+    return fillTemplateClient(text, buildPageTemplateVars())
+  }
+
+  const pageTemplateVars = buildPageTemplateVars()
+
   const fetchAvailability = useCallback(async (month: Date) => {
     setLoadingAvailability(true)
     try {
@@ -273,6 +310,7 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
 
   function applySettings(s: Settings) {
     if (s.site_name) setSiteTitle(s.site_name)
+    if (s.contact_email !== undefined) setContactEmail(s.contact_email ?? '')
     if (s.primary_color) {
       const raw = String(s.primary_color)
       const color = raw.startsWith('#') ? raw : `#${raw}`
@@ -386,7 +424,7 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
       <div className="min-h-screen bg-gray-50 py-8 px-4">
         <div className="max-w-lg mx-auto">
           <h1 className="text-2xl font-bold text-center text-gray-900 mb-1">{siteTitle}</h1>
-          <p className="text-center text-gray-500 text-sm mb-6">{copyStep1Subtitle}</p>
+          <p className="text-center text-gray-500 text-sm mb-6">{fillTemplateClient(copyStep1Subtitle, pageTemplateVars)}</p>
           <StepIndicator currentStep={1} />
 
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
@@ -495,11 +533,11 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
                       <>
                         <p className="text-sm text-gray-600 mb-3">
                           {copyNoSlotsText
-                            ? copyNoSlotsText
+                            ? renderNoSlotsCopy(copyNoSlotsText)
                             : <>
                                 Op{' '}
                                 <span className="text-brand-700 font-medium">
-                                  {format(parseISO(form.tour_date), 'd MMMM', { locale: nl })}
+                                  {formatDateShort(form.tour_date)}
                                 </span>{' '}
                                 zijn we <strong>niet open</strong>, past enkel dan? Stel een moment voor en we kijken of het past!
                               </>
@@ -542,7 +580,7 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
       <div className="min-h-screen bg-gray-50 py-8 px-4">
         <div className="max-w-lg mx-auto">
           <h1 className="text-2xl font-bold text-center text-gray-900 mb-1">{siteTitle}</h1>
-          <p className="text-center text-gray-500 text-sm mb-6">{copyStep2Subtitle}</p>
+          <p className="text-center text-gray-500 text-sm mb-6">{fillTemplateClient(copyStep2Subtitle, pageTemplateVars)}</p>
           <StepIndicator currentStep={2} />
 
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
@@ -632,7 +670,7 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
       <div className="min-h-screen bg-gray-50 py-8 px-4">
         <div className="max-w-lg mx-auto">
           <h1 className="text-2xl font-bold text-center text-gray-900 mb-1">{siteTitle}</h1>
-          <p className="text-center text-gray-500 text-sm mb-6">{copyStep3Subtitle}</p>
+          <p className="text-center text-gray-500 text-sm mb-6">{fillTemplateClient(copyStep3Subtitle, pageTemplateVars)}</p>
           <StepIndicator currentStep={3} />
 
           <form onSubmit={handleSubmit}>
@@ -748,12 +786,12 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">{copyConfirmTitle}</h2>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">{fillTemplateClient(copyConfirmTitle, pageTemplateVars)}</h2>
           <p className="text-gray-700 mb-1">
             We hebben een bevestigingsmail gestuurd naar{' '}
             <span className="font-semibold text-gray-900">{form.visitor_email}</span>.
           </p>
-          <p className="text-gray-500 text-sm mb-6">{copyConfirmBody}</p>
+          <p className="text-gray-500 text-sm mb-6">{fillTemplateClient(copyConfirmBody, pageTemplateVars)}</p>
 
           <div className="bg-brand-50 rounded-xl p-4 text-sm text-gray-700 space-y-1 text-left mb-6">
             <p>

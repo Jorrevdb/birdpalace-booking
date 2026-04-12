@@ -27,6 +27,8 @@ function AdminPageInner() {
   const [workers, setWorkers] = useState<Worker[]>([])
   const [loadingWorkers, setLoadingWorkers] = useState(false)
   const [message, setMessage] = useState('')
+  // Used when navigating from dashboard → bookings with a specific booking to open
+  const [focusBookingId, setFocusBookingId] = useState<string | null>(null)
 
   useEffect(() => {
     const saved = typeof window !== 'undefined' ? localStorage.getItem('admin_pw') : null
@@ -170,9 +172,22 @@ function AdminPageInner() {
 
         {/* Content */}
         <div style={{ padding: '28px 32px' }}>
-          {tab === 'dashboard' && <DashboardPanel password={password} onNavigate={setTab} />}
+          {tab === 'dashboard' && (
+            <DashboardPanel
+              password={password}
+              onNavigate={(t, bookingId) => {
+                if (bookingId) setFocusBookingId(bookingId)
+                setTab(t)
+              }}
+            />
+          )}
 
-          {tab === 'bookings' && <BookingsTable password={password} deepBookingId={deepBookingId} />}
+          {tab === 'bookings' && (
+            <BookingsTable
+              password={password}
+              deepBookingId={focusBookingId ?? deepBookingId}
+            />
+          )}
 
           {tab === 'workers' && (
             <div style={{ maxWidth: 860 }}>
@@ -221,10 +236,15 @@ function AdminPageInner() {
 }
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
-function DashboardPanel({ password, onNavigate }: { password: string; onNavigate: (tab: Tab) => void }) {
+function DashboardPanel({ password, onNavigate }: { password: string; onNavigate: (tab: Tab, bookingId?: string) => void }) {
   const [bookings, setBookings] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [actionMsg, setActionMsg] = useState('')
+
+  // Approve confirmation modal
+  const [approvingBooking, setApprovingBooking] = useState<any | null>(null)
+  const [approveMessage, setApproveMessage] = useState('')
+  const [approving, setApproving] = useState(false)
 
   const todayStr = new Date().toISOString().slice(0, 10)
   const in14Str = (() => { const d = new Date(); d.setDate(d.getDate() + 14); return d.toISOString().slice(0, 10) })()
@@ -251,20 +271,29 @@ function DashboardPanel({ password, onNavigate }: { password: string; onNavigate
 
   useEffect(() => { fetchBookings() }, [])
 
-  async function quickStatus(id: string, status: string) {
+  async function approveBooking(id: string, workerMessage: string) {
+    setApproving(true)
     try {
       const res = await fetch(`/api/admin/bookings/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password, updates: { status }, notify: true }),
+        body: JSON.stringify({
+          password,
+          updates: { status: 'approved', worker_message: workerMessage.trim() || null },
+          notify: true,
+        }),
       })
       const data = await res.json()
       if (!res.ok || !data.ok) throw new Error(data.message || 'Mislukt')
-      setActionMsg(status === 'approved' ? '✓ Boeking bevestigd' : '✓ Boeking geweigerd')
+      setApprovingBooking(null)
+      setApproveMessage('')
+      setActionMsg('✓ Boeking bevestigd en bezoeker op de hoogte gebracht')
       fetchBookings()
-      setTimeout(() => setActionMsg(''), 3000)
+      setTimeout(() => setActionMsg(''), 4000)
     } catch (err: any) {
-      setActionMsg(err.message || 'Fout')
+      setActionMsg(err.message || 'Fout bij bevestigen')
+    } finally {
+      setApproving(false)
     }
   }
 
@@ -292,6 +321,7 @@ function DashboardPanel({ password, onNavigate }: { password: string; onNavigate
   }
 
   return (
+    <>
     <div>
       {actionMsg && (
         <div style={{ marginBottom: 16, padding: '10px 16px', borderRadius: 10, background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#16a34a', fontSize: 14 }}>
@@ -349,16 +379,16 @@ function DashboardPanel({ password, onNavigate }: { password: string; onNavigate
                     </div>
                     <div style={{ display: 'flex', gap: 6, flexShrink: 0, marginLeft: 12 }}>
                       <button
-                        onClick={() => quickStatus(b.id, 'approved')}
-                        style={{ padding: '5px 12px', borderRadius: 8, border: 'none', background: 'var(--primary-color-600)', color: '#fff', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}
+                        onClick={() => { setApprovingBooking(b); setApproveMessage('') }}
+                        style={{ padding: '5px 12px', borderRadius: 8, border: 'none', background: 'var(--primary-color-600)', color: '#fff', fontWeight: 600, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' }}
                       >
-                        ✓
+                        ✓ Accepteren
                       </button>
                       <button
-                        onClick={() => quickStatus(b.id, 'denied')}
-                        style={{ padding: '5px 10px', borderRadius: 8, border: '1px solid #fecaca', background: '#fee2e2', color: '#dc2626', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}
+                        onClick={() => onNavigate('bookings', b.id)}
+                        style={{ padding: '5px 10px', borderRadius: 8, border: '1px solid #d1d5db', background: '#f9fafb', color: '#374151', fontWeight: 600, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' }}
                       >
-                        ✕
+                        ✎ Wijzigen
                       </button>
                     </div>
                   </div>
@@ -448,6 +478,91 @@ function DashboardPanel({ password, onNavigate }: { password: string; onNavigate
         </div>
       )}
     </div>
+
+    {/* ── Approve confirmation modal ───────────────────────────────────────── */}
+    {approvingBooking !== null && (
+      <div
+        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+        onClick={(e) => { if (e.target === e.currentTarget && !approving) { setApprovingBooking(null); setApproveMessage('') } }}
+      >
+        <div style={{ background: '#fff', borderRadius: 18, width: '100%', maxWidth: 480, boxShadow: '0 20px 60px rgba(0,0,0,0.2)', overflow: 'hidden' }}>
+          {/* Header */}
+          <div style={{ padding: '20px 24px', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: '#111827' }}>Boeking bevestigen</h2>
+              <p style={{ margin: '3px 0 0', fontSize: 13, color: '#9ca3af' }}>Stuur een bevestiging naar de bezoeker</p>
+            </div>
+            <button
+              onClick={() => { if (!approving) { setApprovingBooking(null); setApproveMessage('') } }}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: '#9ca3af', lineHeight: 1, padding: 4 }}
+            >
+              ×
+            </button>
+          </div>
+
+          {/* Booking details */}
+          <div style={{ padding: '20px 24px', background: '#f8fafc', borderBottom: '1px solid #f3f4f6' }}>
+            <div style={{ fontWeight: 700, fontSize: 16, color: '#111827', marginBottom: 4 }}>
+              {approvingBooking.visitor_name}
+            </div>
+            <div style={{ fontSize: 14, color: '#6b7280', display: 'flex', flexWrap: 'wrap', gap: '6px 16px' }}>
+              <span>📅 {fmtDate(approvingBooking.tour_date)}</span>
+              <span>🕐 {approvingBooking.tour_time}</span>
+              <span>👥 {approvingBooking.total_people} personen</span>
+            </div>
+            {approvingBooking.visitor_message && (
+              <div style={{ marginTop: 10, padding: '8px 12px', background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, color: '#374151', fontStyle: 'italic' }}>
+                "{approvingBooking.visitor_message}"
+              </div>
+            )}
+          </div>
+
+          {/* Message */}
+          <div style={{ padding: '20px 24px' }}>
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6 }}>
+              Persoonlijk bericht <span style={{ fontWeight: 400, color: '#9ca3af' }}>(optioneel)</span>
+            </label>
+            <textarea
+              value={approveMessage}
+              onChange={(e) => setApproveMessage(e.target.value)}
+              placeholder="Bijv. Welkom! We kijken ernaar uit jullie te ontvangen."
+              rows={3}
+              disabled={approving}
+              style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid #d1d5db', fontSize: 14, resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit', color: '#111827', outline: 'none' }}
+            />
+            <p style={{ margin: '6px 0 0', fontSize: 12, color: '#9ca3af' }}>
+              Dit bericht wordt opgenomen in de bevestigingsmail aan de bezoeker.
+            </p>
+          </div>
+
+          {/* Actions */}
+          <div style={{ padding: '0 24px 20px', display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+            <button
+              onClick={() => { if (!approving) { setApprovingBooking(null); setApproveMessage('') } }}
+              disabled={approving}
+              style={{ padding: '10px 20px', borderRadius: 10, border: '1px solid #d1d5db', background: '#f9fafb', color: '#374151', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}
+            >
+              Annuleren
+            </button>
+            <button
+              onClick={() => approveBooking(approvingBooking.id, approveMessage)}
+              disabled={approving}
+              style={{ padding: '10px 24px', borderRadius: 10, border: 'none', background: 'var(--primary-color-600)', color: '#fff', fontWeight: 700, fontSize: 14, cursor: approving ? 'not-allowed' : 'pointer', opacity: approving ? 0.7 : 1, display: 'flex', alignItems: 'center', gap: 8 }}
+            >
+              {approving ? (
+                <>
+                  <span style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.7s linear infinite' }} />
+                  Bezig…
+                </>
+              ) : (
+                '✓ Boeking bevestigen'
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   )
 }
 

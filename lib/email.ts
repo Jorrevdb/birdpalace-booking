@@ -9,7 +9,7 @@ const resend = new Resend(process.env.RESEND_API_KEY)
 const MAPS_URL = 'https://maps.app.goo.gl/WXgroKXYJiGK95QLA'
 
 function mapsButton(): string {
-  return `<a href="${MAPS_URL}" style="display:inline-block;padding:11px 22px;background:transparent;color:#1a73e8;text-decoration:none;border-radius:8px;font-weight:600;font-size:14px;border:2px solid #1a73e8">📍 Bekijk op Google Maps</a>`
+  return `<a href="${MAPS_URL}" style="display:inline-flex;align-items:center;gap:8px;padding:11px 20px;background:#fff;color:#1a73e8;text-decoration:none;border-radius:8px;font-weight:600;font-size:14px;border:2px solid #dadce0;box-shadow:0 1px 3px rgba(0,0,0,.08)"><img src="https://maps.gstatic.com/favicon3.ico" width="16" height="16" alt="" style="vertical-align:middle"> Bekijk op Google Maps</a>`
 }
 
 async function getFrom() {
@@ -167,7 +167,7 @@ export async function sendBookingApprovedEmail(
       html: `
         <div style="font-family:sans-serif;max-width:560px;margin:0 auto;color:#1a1a1a">
           <h2 style="color:${brand}">Jullie tour is bevestigd! 🎉</h2>
-          <p>Goed nieuws, ${booking.visitor_name}! <strong>${workerName}</strong> zal jullie tour begeleiden.</p>
+          <p>Goed nieuws, ${booking.visitor_name}! Je aanvraag voor een rondleiding bij Bird Palace is goedgekeurd.</p>
           <table style="width:100%;border-collapse:collapse;margin:24px 0">
             <tr><td style="padding:8px 0;color:#666;width:160px">Datum</td><td style="padding:8px 0;font-weight:600">${formatDate(booking.tour_date)}</td></tr>
             <tr><td style="padding:8px 0;color:#666">Tijdslot</td><td style="padding:8px 0;font-weight:600">${booking.tour_time}</td></tr>

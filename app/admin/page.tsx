@@ -4,27 +4,34 @@ import React, { useEffect, useState, useRef, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 
 type Worker = { id: string; name: string; email: string; google_calendar_id: string; created_at?: string }
+type Tab = 'dashboard' | 'bookings' | 'workers' | 'calendar' | 'settings'
+
+const NAV_ITEMS: { id: Tab; label: string; icon: string }[] = [
+  { id: 'dashboard', label: 'Dashboard', icon: '⊞' },
+  { id: 'bookings',  label: 'Boekingen',  icon: '📋' },
+  { id: 'workers',   label: 'Workers',    icon: '👥' },
+  { id: 'calendar',  label: 'Kalender',   icon: '📅' },
+  { id: 'settings',  label: 'Instellingen', icon: '⚙️' },
+]
 
 // Inner component so useSearchParams() is inside a Suspense boundary (Next.js 14 requirement)
 function AdminPageInner() {
   const searchParams = useSearchParams()
-  const deepBookingId = searchParams.get('booking') // e.g. /admin?booking=<id>
+  const deepBookingId = searchParams.get('booking')
 
   const [password, setPassword] = useState('')
   const [authenticated, setAuthenticated] = useState(false)
   const [clientEmail, setClientEmail] = useState<string | null>(null)
-  const [tab, setTab] = useState<'workers' | 'bookings' | 'settings' | 'calendar'>('workers')
+  const [tab, setTab] = useState<Tab>('dashboard')
 
   const [workers, setWorkers] = useState<Worker[]>([])
   const [loadingWorkers, setLoadingWorkers] = useState(false)
   const [message, setMessage] = useState('')
 
-  // On mount: restore saved password and auto-login if available
   useEffect(() => {
     const saved = typeof window !== 'undefined' ? localStorage.getItem('admin_pw') : null
     if (!saved) return
     setPassword(saved)
-    // Auto-login with the saved password
     ;(async () => {
       try {
         const res = await fetch(`/api/admin/workers?password=${encodeURIComponent(saved)}`)
@@ -47,11 +54,10 @@ function AdminPageInner() {
       const data = await res.json()
       setClientEmail(data.client_email ?? null)
       setAuthenticated(true)
-      localStorage.setItem('admin_pw', password) // remember for next visit
+      localStorage.setItem('admin_pw', password)
       fetchWorkers(password)
-      // If ?booking=<id> in URL, switch to bookings tab and open that booking
       if (deepBookingId) setTab('bookings')
-    } catch (err) {
+    } catch {
       setMessage('Verkeerd wachtwoord')
     }
   }
@@ -71,46 +77,130 @@ function AdminPageInner() {
     }
   }
 
-  useEffect(() => {
-    if (authenticated) fetchWorkers()
-  }, [authenticated])
+  useEffect(() => { if (authenticated) fetchWorkers() }, [authenticated])
+
+  // ── Login screen ──────────────────────────────────────────────────────────────
+  if (!authenticated) {
+    return (
+      <div style={{ minHeight: '100vh', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ background: '#fff', borderRadius: 16, padding: '40px 36px', width: 360, boxShadow: '0 4px 24px rgba(0,0,0,.08)', border: '1px solid #e5e7eb' }}>
+          <div style={{ textAlign: 'center', marginBottom: 28 }}>
+            <div style={{ fontSize: 36, marginBottom: 8 }}>🐦</div>
+            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#111827' }}>Bird Palace</h1>
+            <p style={{ margin: '4px 0 0', fontSize: 13, color: '#9ca3af' }}>Admin panel</p>
+          </div>
+          <form onSubmit={handleLogin}>
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Wachtwoord</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              style={{ display: 'block', width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid #d1d5db', fontSize: 14, boxSizing: 'border-box', outline: 'none' }}
+            />
+            {message && <p style={{ margin: '8px 0 0', fontSize: 13, color: '#dc2626' }}>{message}</p>}
+            <button
+              type="submit"
+              style={{ marginTop: 16, width: '100%', padding: '11px 0', borderRadius: 10, border: 'none', background: '#111827', color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}
+            >
+              Inloggen
+            </button>
+          </form>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Authenticated layout ───────────────────────────────────────────────────────
+  const pageTitle = NAV_ITEMS.find(n => n.id === tab)?.label ?? ''
 
   return (
-    <div style={{ maxWidth: 960, margin: '24px auto', padding: 20 }}>
-      <h1>Admin Panel</h1>
-
-      {!authenticated ? (
-        <form onSubmit={handleLogin} style={{ marginTop: 24 }}>
-          <label>
-            Admin password
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} style={{ display: 'block', marginTop: 8, padding: 8, width: '100%' }} />
-          </label>
-          <button style={{ marginTop: 12, padding: '8px 12px' }} type="submit">Log in</button>
-          {message && <p style={{ color: 'red' }}>{message}</p>}
-        </form>
-      ) : (
-        <div style={{ marginTop: 16 }}>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-            <button onClick={() => setTab('workers')} style={{ padding: '8px 12px', background: tab === 'workers' ? 'var(--primary-color-600)' : undefined, color: tab === 'workers' ? '#fff' : undefined }}>Workers</button>
-            <button onClick={() => setTab('bookings')} style={{ padding: '8px 12px', background: tab === 'bookings' ? 'var(--primary-color-600)' : undefined, color: tab === 'bookings' ? '#fff' : undefined }}>Bookings</button>
-            <button onClick={() => setTab('settings')} style={{ padding: '8px 12px', background: tab === 'settings' ? 'var(--primary-color-600)' : undefined, color: tab === 'settings' ? '#fff' : undefined }}>Settings</button>
-            <button onClick={() => setTab('calendar')} style={{ padding: '8px 12px', background: tab === 'calendar' ? 'var(--primary-color-600)' : undefined, color: tab === 'calendar' ? '#fff' : undefined }}>Calendar</button>
+    <div style={{ display: 'flex', minHeight: '100vh', background: '#f8fafc', fontFamily: 'system-ui, sans-serif' }}>
+      {/* Sidebar */}
+      <aside style={{ width: 220, background: '#111827', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+        <div style={{ padding: '24px 20px 16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 26 }}>🐦</span>
+            <div>
+              <div style={{ color: '#fff', fontWeight: 800, fontSize: 15, lineHeight: 1.2 }}>Bird Palace</div>
+              <div style={{ color: '#6b7280', fontSize: 11 }}>Admin panel</div>
+            </div>
           </div>
+        </div>
+
+        <nav style={{ flex: 1, padding: '8px 10px' }}>
+          {NAV_ITEMS.map(({ id, label, icon }) => {
+            const active = tab === id
+            return (
+              <button
+                key={id}
+                onClick={() => setTab(id)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+                  padding: '10px 12px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                  marginBottom: 2, textAlign: 'left', fontSize: 14, fontWeight: active ? 600 : 400,
+                  background: active ? 'rgba(255,255,255,.12)' : 'transparent',
+                  color: active ? '#fff' : '#9ca3af',
+                  transition: 'all .15s',
+                }}
+              >
+                <span style={{ fontSize: 16 }}>{icon}</span>
+                {label}
+              </button>
+            )
+          })}
+        </nav>
+
+        <div style={{ padding: '16px 20px', borderTop: '1px solid rgba(255,255,255,.08)' }}>
+          <button
+            onClick={() => { localStorage.removeItem('admin_pw'); window.location.reload() }}
+            style={{ background: 'none', border: 'none', color: '#6b7280', fontSize: 13, cursor: 'pointer', padding: 0 }}
+          >
+            ← Uitloggen
+          </button>
+        </div>
+      </aside>
+
+      {/* Main */}
+      <main style={{ flex: 1, overflow: 'auto' }}>
+        {/* Header */}
+        <div style={{ padding: '24px 32px 0', borderBottom: '1px solid #e5e7eb', background: '#fff' }}>
+          <h1 style={{ margin: '0 0 18px', fontSize: 22, fontWeight: 800, color: '#111827' }}>{pageTitle}</h1>
+          <div style={{ display: 'flex', gap: 0 }}>
+            {NAV_ITEMS.map(({ id, label }) => (
+              <button
+                key={id}
+                onClick={() => setTab(id)}
+                style={{
+                  padding: '8px 16px', border: 'none', background: 'transparent', cursor: 'pointer',
+                  fontSize: 14, fontWeight: tab === id ? 700 : 400,
+                  color: tab === id ? '#111827' : '#6b7280',
+                  borderBottom: tab === id ? '2px solid #111827' : '2px solid transparent',
+                  marginBottom: -1, transition: 'all .15s',
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Content */}
+        <div style={{ padding: '28px 32px' }}>
+          {tab === 'dashboard' && <DashboardPanel password={password} onNavigate={setTab} />}
+
+          {tab === 'bookings' && <BookingsTable password={password} deepBookingId={deepBookingId} />}
 
           {tab === 'workers' && (
-            <div style={{ marginTop: 12, maxWidth: 860 }}>
+            <div style={{ maxWidth: 860 }}>
               {clientEmail && (
                 <div style={{ marginBottom: 20, padding: '12px 16px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: 13, color: '#475569' }}>
                   <strong style={{ color: '#1e293b' }}>📋 Service account e-mail</strong>
-                  <p style={{ margin: '4px 0 0', lineHeight: 1.5 }}>
-                    Werknemers moeten hun Google Calendar delen met dit adres zodat het boekingssysteem beschikbaarheid kan inlezen:
-                  </p>
+                  <p style={{ margin: '4px 0 0', lineHeight: 1.5 }}>Werknemers moeten hun Google Calendar delen met dit adres:</p>
                   <code style={{ display: 'inline-block', marginTop: 6, padding: '4px 10px', background: '#e2e8f0', borderRadius: 6, fontFamily: 'monospace', color: '#1e293b', userSelect: 'all' }}>{clientEmail}</code>
                 </div>
               )}
-
               <AddWorkerForm password={password} onAdded={() => fetchWorkers()} />
-
               {loadingWorkers ? (
                 <p style={{ color: '#9ca3af', marginTop: 16 }}>Laden…</p>
               ) : workers.length === 0 ? (
@@ -138,32 +228,247 @@ function AdminPageInner() {
             </div>
           )}
 
-          {tab === 'bookings' && (
-            <div style={{ marginTop: 12 }}>
-              <h2>Bookings</h2>
-              <BookingsTable password={password} deepBookingId={deepBookingId} />
-            </div>
-          )}
+          {tab === 'settings' && <SettingsPanel password={password} />}
 
-          {tab === 'settings' && (
-            <div style={{ marginTop: 12 }}>
-              <h2>Settings</h2>
-              <SettingsPanel password={password} />
-            </div>
-          )}
+          {tab === 'calendar' && <CalendarPanel password={password} />}
+        </div>
+      </main>
+    </div>
+  )
+}
 
-          {tab === 'calendar' && (
-            <div style={{ marginTop: 12 }}>
-              <h2>Google Calendar</h2>
-              <CalendarPanel password={password} />
+// ── Dashboard ─────────────────────────────────────────────────────────────────
+function DashboardPanel({ password, onNavigate }: { password: string; onNavigate: (tab: Tab) => void }) {
+  const [bookings, setBookings] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [actionMsg, setActionMsg] = useState('')
+
+  const todayStr = new Date().toISOString().slice(0, 10)
+  const in14Str = (() => { const d = new Date(); d.setDate(d.getDate() + 14); return d.toISOString().slice(0, 10) })()
+
+  function fmtDate(iso: string) {
+    try {
+      return new Intl.DateTimeFormat('nl-BE', { weekday: 'short', day: 'numeric', month: 'short' })
+        .format(new Date(`${iso}T00:00:00`))
+    } catch { return iso }
+  }
+
+  async function fetchBookings() {
+    try {
+      const res = await fetch(`/api/admin/bookings/list?password=${encodeURIComponent(password)}`)
+      if (!res.ok) throw new Error('Unauthorized')
+      const data = await res.json()
+      setBookings((data.bookings ?? []).slice().sort((a: any, b: any) =>
+        `${a.tour_date} ${a.tour_time}` < `${b.tour_date} ${b.tour_time}` ? -1 : 1
+      ))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { fetchBookings() }, [])
+
+  async function quickStatus(id: string, status: string) {
+    try {
+      const res = await fetch(`/api/admin/bookings/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password, updates: { status }, notify: true }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.ok) throw new Error(data.message || 'Mislukt')
+      setActionMsg(status === 'approved' ? '✓ Boeking bevestigd' : '✓ Boeking geweigerd')
+      fetchBookings()
+      setTimeout(() => setActionMsg(''), 3000)
+    } catch (err: any) {
+      setActionMsg(err.message || 'Fout')
+    }
+  }
+
+  // Derived stats
+  const pendingUpcoming = bookings.filter(b => b.status === 'pending' && b.tour_date >= todayStr)
+  const upcomingApproved = bookings.filter(b => b.status === 'approved' && b.tour_date >= todayStr)
+  const thisMonthStr = todayStr.slice(0, 7)
+  const thisMonthTotal = bookings.filter(b => b.tour_date.startsWith(thisMonthStr)).length
+  const next14 = bookings.filter(b => b.tour_date >= todayStr && b.tour_date <= in14Str)
+  const totalPeople = upcomingApproved.reduce((s: number, b: any) => s + (b.total_people || 0), 0)
+
+  const statCards = [
+    { label: 'Wachten op bevestiging', value: pendingUpcoming.length, color: pendingUpcoming.length > 0 ? '#f59e0b' : '#6b7280', bg: pendingUpcoming.length > 0 ? '#fffbeb' : '#f9fafb', urgent: pendingUpcoming.length > 0 },
+    { label: 'Aankomende tours', value: upcomingApproved.length, color: 'var(--primary-color-600)', bg: 'color-mix(in srgb, var(--primary-color-600) 8%, white)', urgent: false },
+    { label: 'Personen verwacht', value: totalPeople, color: '#6366f1', bg: '#eef2ff', urgent: false },
+    { label: 'Boekingen deze maand', value: thisMonthTotal, color: '#6b7280', bg: '#f9fafb', urgent: false },
+  ]
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 300, color: '#9ca3af', fontSize: 15 }}>
+        Laden…
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      {actionMsg && (
+        <div style={{ marginBottom: 16, padding: '10px 16px', borderRadius: 10, background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#16a34a', fontSize: 14 }}>
+          {actionMsg}
+        </div>
+      )}
+
+      {/* Stat cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 28 }}>
+        {statCards.map(({ label, value, color, bg, urgent }) => (
+          <div
+            key={label}
+            style={{ background: bg, border: `1px solid ${urgent ? '#fde68a' : '#e5e7eb'}`, borderRadius: 14, padding: '20px 22px', position: 'relative', overflow: 'hidden' }}
+          >
+            {urgent && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: color }} />}
+            <div style={{ fontSize: 32, fontWeight: 800, color, lineHeight: 1 }}>{value}</div>
+            <div style={{ marginTop: 6, fontSize: 13, color: '#6b7280', fontWeight: 500 }}>{label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Two-column layout */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+
+        {/* Left: Actie vereist */}
+        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 14, overflow: 'hidden' }}>
+          <div style={{ padding: '16px 20px', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#111827' }}>⏳ Actie vereist</h2>
+              <p style={{ margin: '2px 0 0', fontSize: 12, color: '#9ca3af' }}>Boekingen die wachten op bevestiging</p>
+            </div>
+            {pendingUpcoming.length > 0 && (
+              <span style={{ background: '#f59e0b', color: '#fff', borderRadius: 999, padding: '2px 10px', fontSize: 12, fontWeight: 700 }}>
+                {pendingUpcoming.length}
+              </span>
+            )}
+          </div>
+          <div style={{ maxHeight: 420, overflowY: 'auto' }}>
+            {pendingUpcoming.length === 0 ? (
+              <div style={{ padding: '32px 20px', textAlign: 'center', color: '#9ca3af', fontSize: 14 }}>
+                ✓ Niets te bevestigen
+              </div>
+            ) : (
+              pendingUpcoming.map((b: any) => (
+                <div key={b.id} style={{ padding: '14px 20px', borderBottom: '1px solid #f9fafb' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 14, color: '#111827' }}>{b.visitor_name}</div>
+                      <div style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>
+                        {fmtDate(b.tour_date)} · {b.tour_time} · {b.total_people} pers.
+                      </div>
+                      {b.visitor_message && (
+                        <div style={{ marginTop: 4, fontSize: 12, color: '#9ca3af', fontStyle: 'italic' }}>"{b.visitor_message}"</div>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, flexShrink: 0, marginLeft: 12 }}>
+                      <button
+                        onClick={() => quickStatus(b.id, 'approved')}
+                        style={{ padding: '5px 12px', borderRadius: 8, border: 'none', background: 'var(--primary-color-600)', color: '#fff', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}
+                      >
+                        ✓
+                      </button>
+                      <button
+                        onClick={() => quickStatus(b.id, 'denied')}
+                        style={{ padding: '5px 10px', borderRadius: 8, border: '1px solid #fecaca', background: '#fee2e2', color: '#dc2626', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+          {pendingUpcoming.length > 0 && (
+            <div style={{ padding: '12px 20px', borderTop: '1px solid #f3f4f6' }}>
+              <button onClick={() => onNavigate('bookings')} style={{ fontSize: 13, color: 'var(--primary-color-600)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, padding: 0 }}>
+                Bekijk alle boekingen →
+              </button>
             </div>
           )}
+        </div>
+
+        {/* Right: Aankomende tours */}
+        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 14, overflow: 'hidden' }}>
+          <div style={{ padding: '16px 20px', borderBottom: '1px solid #f3f4f6' }}>
+            <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#111827' }}>📅 Aankomende tours</h2>
+            <p style={{ margin: '2px 0 0', fontSize: 12, color: '#9ca3af' }}>Bevestigde tours, komende 14 dagen</p>
+          </div>
+          <div style={{ maxHeight: 420, overflowY: 'auto' }}>
+            {next14.filter((b: any) => b.status === 'approved').length === 0 ? (
+              <div style={{ padding: '32px 20px', textAlign: 'center', color: '#9ca3af', fontSize: 14 }}>
+                Geen tours gepland in de komende 14 dagen
+              </div>
+            ) : (
+              next14.filter((b: any) => b.status === 'approved').map((b: any) => (
+                <div key={b.id} style={{ padding: '14px 20px', borderBottom: '1px solid #f9fafb', display: 'flex', alignItems: 'center', gap: 14 }}>
+                  <div style={{ textAlign: 'center', minWidth: 44, background: '#f9fafb', borderRadius: 10, padding: '6px 8px', border: '1px solid #e5e7eb' }}>
+                    <div style={{ fontSize: 11, color: '#9ca3af', textTransform: 'uppercase', fontWeight: 600 }}>
+                      {new Intl.DateTimeFormat('nl-BE', { month: 'short' }).format(new Date(`${b.tour_date}T00:00:00`))}
+                    </div>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: '#111827', lineHeight: 1.1 }}>
+                      {new Date(`${b.tour_date}T00:00:00`).getDate()}
+                    </div>
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 600, fontSize: 14, color: '#111827' }}>{b.visitor_name}</div>
+                    <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 1 }}>
+                      {b.tour_time} · {b.total_people} {b.total_people === 1 ? 'persoon' : 'personen'}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+          <div style={{ padding: '12px 20px', borderTop: '1px solid #f3f4f6' }}>
+            <button onClick={() => onNavigate('bookings')} style={{ fontSize: 13, color: 'var(--primary-color-600)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, padding: 0 }}>
+              Alle boekingen bekijken →
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom: recent all bookings summary */}
+      {bookings.filter(b => b.tour_date >= todayStr).length > 0 && (
+        <div style={{ marginTop: 20, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 14, overflow: 'hidden' }}>
+          <div style={{ padding: '16px 20px', borderBottom: '1px solid #f3f4f6' }}>
+            <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#111827' }}>🗓 Volgende 5 boekingen</h2>
+          </div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+            <tbody>
+              {bookings.filter(b => b.tour_date >= todayStr).slice(0, 5).map((b: any) => (
+                <tr key={b.id}>
+                  <td style={{ padding: '12px 20px', borderBottom: '1px solid #f9fafb', fontWeight: 500 }}>{fmtDate(b.tour_date)}</td>
+                  <td style={{ padding: '12px 20px', borderBottom: '1px solid #f9fafb', fontWeight: 600, color: '#374151' }}>{b.tour_time}</td>
+                  <td style={{ padding: '12px 20px', borderBottom: '1px solid #f9fafb' }}>{b.visitor_name}</td>
+                  <td style={{ padding: '12px 20px', borderBottom: '1px solid #f9fafb', color: '#9ca3af', fontSize: 13 }}>{b.total_people} pers.</td>
+                  <td style={{ padding: '12px 20px', borderBottom: '1px solid #f9fafb' }}>
+                    <span style={{
+                      display: 'inline-block', padding: '3px 10px', borderRadius: 999, fontSize: 12, fontWeight: 600,
+                      ...(b.status === 'approved'
+                        ? { background: 'color-mix(in srgb, var(--primary-color-600) 10%, white)', color: 'var(--primary-color-700)', border: '1px solid var(--primary-color-600)' }
+                        : b.status === 'denied'
+                        ? { background: '#fef2f2', color: '#991b1b', border: '1px solid #fecaca' }
+                        : { background: '#fffbeb', color: '#92400e', border: '1px solid #fde68a' })
+                    }}>
+                      {b.status === 'approved' ? 'Bevestigd' : b.status === 'denied' ? 'Geweigerd' : 'Afwachtend'}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
   )
 }
 
+// ── Add Worker Form ────────────────────────────────────────────────────────────
 function AddWorkerForm({ password, onAdded }: { password: string; onAdded: () => void }) {
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')

@@ -170,6 +170,7 @@ export async function sendWorkerNotificationEmail(
     const from = await getFrom()
     const s = await getSettings()
     const siteUrl = getSiteUrl((s as any).site_url)
+    const contact = getContactEmail(s.contact_email)
     const brand = getBrandColor(s)
     const respondUrl = `${siteUrl}/worker/respond/${responseToken}`
     const vars = buildTemplateVars(booking, s, { worker, siteUrl })
@@ -203,6 +204,7 @@ export async function sendWorkerNotificationEmail(
             <a href="${respondUrl}?action=accept" style="display:inline-block;padding:12px 28px;background:${brand};color:#fff;text-decoration:none;border-radius:8px;font-weight:600;margin-right:16px;margin-bottom:8px">✓ Ik accepteer</a>
             <a href="${siteUrl}/admin?booking=${booking.id}" style="display:inline-block;padding:12px 28px;background:#f3f4f6;color:#374151;text-decoration:none;border-radius:8px;font-weight:600;border:1px solid #d1d5db">✎ Boeking wijzigen</a>
           </div>
+          <p style="margin-top:32px;color:#888;font-size:13px">Vragen? Mail ons op <a href="mailto:${contact}">${contact}</a></p>
         </div>
       `,
     })
@@ -227,6 +229,7 @@ export async function sendBookingApprovedEmail(
     const from = await getFrom()
     const s = await getSettings()
     const siteUrl = getSiteUrl((s as any).site_url)
+    const contact = getContactEmail(s.contact_email)
     const brand = getBrandColor(s)
     const brandLight = lighten(brand)
     const vars = buildTemplateVars(booking, s, { siteUrl })
@@ -257,6 +260,7 @@ export async function sendBookingApprovedEmail(
             <a href="${siteUrl}/booking/${booking.edit_token}" style="display:inline-block;padding:10px 22px;background:${brand};color:#fff;text-decoration:none;border-radius:10px;font-weight:600;font-size:14px;vertical-align:middle;margin-right:10px">Bekijk boeking</a>
             ${mapsButton(siteUrl)}
           </div>
+          <p style="margin-top:32px;color:#888;font-size:13px">Vragen? Mail ons op <a href="mailto:${contact}">${contact}</a></p>
         </div>
       `,
     })
@@ -299,6 +303,7 @@ export async function sendBookingDeniedEmail(
             <a href="${siteUrl}/booking/${booking.edit_token}" style="display:inline-block;margin-right:12px;padding:12px 24px;background:${brand};color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Bekijk boekingsstatus</a>
             <a href="${siteUrl}" style="display:inline-block;padding:12px 24px;background:#111827;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Kies een andere datum</a>
           </div>
+          <p style="margin-top:32px;color:#888;font-size:13px">Vragen? Mail ons op <a href="mailto:${contact}">${contact}</a></p>
         </div>
       `,
     })
@@ -313,6 +318,7 @@ export async function sendBookingUpdatedEmail(booking: Booking): Promise<void> {
     const from = await getFrom()
     const s = await getSettings()
     const siteUrl = getSiteUrl((s as any).site_url)
+    const contact = getContactEmail(s.contact_email)
 
     const statusLabel =
       booking.status === 'approved'
@@ -342,6 +348,7 @@ export async function sendBookingUpdatedEmail(booking: Booking): Promise<void> {
             <a href="${siteUrl}/booking/${booking.edit_token}" style="display:inline-block;padding:10px 22px;background:${brand};color:#fff;text-decoration:none;border-radius:10px;font-weight:600;font-size:14px;vertical-align:middle;margin-right:10px">Bekijk boeking</a>
             ${booking.status === 'approved' ? mapsButton(siteUrl) : ''}
           </div>
+          <p style="margin-top:32px;color:#888;font-size:13px">Vragen? Mail ons op <a href="mailto:${contact}">${contact}</a></p>
         </div>
       `,
     })
@@ -359,6 +366,7 @@ export async function sendSlotTakenEmail(
     const from = await getFrom()
     const s = await getSettings()
     const siteUrl = getSiteUrl((s as any).site_url)
+    const contact = getContactEmail(s.contact_email)
     await resend.emails.send({
       from,
       to: worker.email,
@@ -367,6 +375,7 @@ export async function sendSlotTakenEmail(
         <div style="font-family:sans-serif;max-width:560px;margin:0 auto;color:#1a1a1a">
           <h2 style="color:#d97706">Hoi ${worker.name},</h2>
           <p>De tour op <strong>${formatDate(booking.tour_date)} om ${booking.tour_time}</strong> is al door een collega overgenomen. Geen actie nodig.</p>
+          <p style="margin-top:32px;color:#888;font-size:13px">Vragen? Mail ons op <a href="mailto:${contact}">${contact}</a></p>
         </div>
       `,
     })

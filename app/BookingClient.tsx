@@ -11,60 +11,60 @@ import { Counter } from '@/components/Counter'
 // Week starts on Monday. Dutch abbreviated day names.
 const WEEKDAY_LABELS = ['Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za', 'Zo']
 
-// ── Time input: HH:MM, digits only, colon always visible, max 23:59 ───────────
-function TimeInput({
+// ── Time slot options: 08:00 → 20:00 in 30-min steps ────────────────────────
+const TIME_OPTIONS: string[] = (() => {
+  const slots: string[] = []
+  for (let h = 8; h <= 20; h++) {
+    slots.push(`${String(h).padStart(2, '0')}:00`)
+    if (h < 20) slots.push(`${String(h).padStart(2, '0')}:30`)
+  }
+  return slots
+})()
+
+// ── Time dropdown ─────────────────────────────────────────────────────────────
+function TimeDropdown({
   onValidTime,
   resetKey,
 }: {
   onValidTime: (time: string) => void
   resetKey?: string | number
 }) {
-  const [raw, setRaw] = useState('')
+  const [value, setValue] = useState('')
 
-  // Reset when date changes or a slot button is clicked
-  useEffect(() => { setRaw('') }, [resetKey])
+  // Reset when date changes or a preset slot is clicked
+  useEffect(() => { setValue(''); onValidTime('') }, [resetKey])
 
-  // Colon always appears after the first two digits: "18" → "18:", "180" → "18:0"
-  const display = raw.length >= 2 ? `${raw.slice(0, 2)}:${raw.slice(2)}` : raw
-
-  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    // When display is "HH:" and user presses backspace, delete the second hour digit
-    // instead of just stripping the colon (which would re-appear immediately)
-    if (e.key === 'Backspace' && raw.length === 2) {
-      e.preventDefault()
-      setRaw(raw.slice(0, 1))
-      onValidTime('')
-    }
+  function handleChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    const t = e.target.value
+    setValue(t)
+    onValidTime(t)
   }
 
-  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const digits = e.target.value.replace(/\D/g, '').slice(0, 4)
-
-    // Block hours > 23
-    if (digits.length >= 2 && parseInt(digits.slice(0, 2), 10) > 23) return
-    // Block minutes > 59
-    if (digits.length >= 4 && parseInt(digits.slice(2, 4), 10) > 59) return
-
-    setRaw(digits)
-
-    if (digits.length === 4) {
-      onValidTime(`${digits.slice(0, 2)}:${digits.slice(2, 4)}`)
-      return
-    }
-    onValidTime('')
-  }
+  const hasValue = value !== ''
 
   return (
-    <input
-      type="text"
-      inputMode="numeric"
-      placeholder="--:--"
-      value={display}
-      onKeyDown={handleKeyDown}
-      onChange={handleChange}
-      maxLength={5}
-      className="w-[68px] px-2 py-3 rounded-xl border-2 border-gray-200 text-center text-sm font-semibold text-gray-700 focus:outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600 transition-all"
-    />
+    <div className="relative inline-block">
+      <select
+        value={value}
+        onChange={handleChange}
+        className={`appearance-none pl-3 pr-8 py-3 rounded-xl border-2 text-sm font-semibold cursor-pointer focus:outline-none transition-all
+          ${hasValue
+            ? 'border-brand-600 bg-brand-50 text-brand-700 ring-2 ring-brand-600'
+            : 'border-gray-200 text-gray-400 bg-white hover:border-gray-300'
+          }`}
+      >
+        <option value="">--:--</option>
+        {TIME_OPTIONS.map(t => (
+          <option key={t} value={t}>{t}</option>
+        ))}
+      </select>
+      {/* Chevron icon */}
+      <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M2 4L6 8L10 4" stroke={hasValue ? 'var(--primary-color-600, #2d6a4f)' : '#9ca3af'} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      </span>
+    </div>
   )
 }
 
@@ -241,8 +241,8 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
   const [editToken, setEditToken] = useState('')
   // Tracks whether the currently selected time came from the custom "Anders" input
   const [isCustomTime, setIsCustomTime] = useState(false)
-  // Incrementing this key remounts TimeInput, resetting its displayed value
-  const [timeInputResetKey, setTimeInputResetKey] = useState(0)
+  // Incrementing this key remounts TimeDropdown, resetting its displayed value
+  const [timeInputResetKey, setTimeDropdownResetKey] = useState(0)
 
   const [form, setForm] = useState<BookingForm>({
     tour_date: '',
@@ -377,7 +377,7 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
 
   function handleTimeSelect(time: string) {
     setIsCustomTime(false)
-    setTimeInputResetKey((k) => k + 1) // resets the TimeInput display
+    setTimeDropdownResetKey((k) => k + 1) // resets the TimeDropdown display
     setForm((f) => ({ ...f, tour_time: time }))
   }
 
@@ -475,7 +475,7 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
                     onSelect={(dateStr) => {
                       setForm((f) => ({ ...f, tour_date: dateStr, tour_time: '' }))
                       setIsCustomTime(false)
-                      setTimeInputResetKey((k) => k + 1)
+                      setTimeDropdownResetKey((k) => k + 1)
                     }}
                   />
                 </div>
@@ -506,8 +506,8 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
                               {time}
                             </button>
                           ))}
-                          <span className="text-sm font-medium text-gray-500 ml-1">Anders:</span>
-                          <TimeInput
+                          <span className="text-sm font-medium text-gray-400 ml-1">of</span>
+                          <TimeDropdown
                             resetKey={timeInputResetKey}
                             onValidTime={(t) => {
                               if (t) {
@@ -543,7 +543,7 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
                               </>
                           }
                         </p>
-                        <TimeInput
+                        <TimeDropdown
                           resetKey={timeInputResetKey}
                           onValidTime={(t) => {
                             setIsCustomTime(!!t)

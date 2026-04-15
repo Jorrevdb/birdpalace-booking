@@ -365,16 +365,31 @@ export async function sendSlotTakenEmail(
   try {
     const from = await getFrom()
     const s = await getSettings()
+
+    // Respect the enable/disable toggle (default: enabled when not set)
+    if (s.email_slot_taken_enabled === false) return
+
     const siteUrl = getSiteUrl((s as any).site_url)
     const contact = getContactEmail(s.contact_email)
+
+    const defaultSubject = `Boeking al ingenomen – ${formatDate(booking.tour_date)} om ${booking.tour_time}`
+    const subject = s.email_slot_taken_subject
+      ? fillTemplate(s.email_slot_taken_subject, buildTemplateVars(booking, s, {}))
+      : defaultSubject
+
+    const defaultIntro = `De tour op <strong>${formatDate(booking.tour_date)} om ${booking.tour_time}</strong> is al door een collega overgenomen. Geen actie nodig.`
+    const intro = s.email_slot_taken_intro
+      ? `<p>${fillTemplate(s.email_slot_taken_intro, buildTemplateVars(booking, s, {}))}</p>`
+      : `<p>${defaultIntro}</p>`
+
     await resend.emails.send({
       from,
       to: worker.email,
-      subject: `Boeking al ingenomen – ${formatDate(booking.tour_date)} om ${booking.tour_time}`,
+      subject,
       html: `
         <div style="font-family:sans-serif;max-width:560px;margin:0 auto;color:#1a1a1a">
           <h2 style="color:#d97706">Hoi ${worker.name},</h2>
-          <p>De tour op <strong>${formatDate(booking.tour_date)} om ${booking.tour_time}</strong> is al door een collega overgenomen. Geen actie nodig.</p>
+          ${intro}
           <p style="margin-top:32px;color:#888;font-size:13px">Vragen? Mail ons op <a href="mailto:${contact}">${contact}</a></p>
         </div>
       `,

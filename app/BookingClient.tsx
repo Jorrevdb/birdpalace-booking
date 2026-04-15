@@ -614,6 +614,14 @@ export default function BookingClient({ initialSiteTitle, initialSettings }: { i
               <span className="font-semibold text-gray-900">{form.adults_count + form.children_count}</span>
             </div>
 
+            {/* Group warning — shown when total >= 10 */}
+            {form.adults_count + form.children_count >= 10 && (
+              <div className="flex items-center gap-2 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
+                <span>🐦</span>
+                <span>Kom je met een groep? Kijk op <a href="https://birdpalace.be/groepen/" className="font-semibold underline">birdpalace.be/groepen/</a></span>
+              </div>
+            )}
+
             {/* Penguin feeding — decided on-site, no number needed */}
             <div className="flex items-start gap-3 pt-6 border-t border-gray-100">
               <span className="text-2xl leading-none mt-0.5">🐧</span>

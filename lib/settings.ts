@@ -30,6 +30,10 @@ export type Settings = {
   // Worker: new booking notification
   email_worker_subject?: string
   email_worker_intro?: string
+  // Worker: slot already taken by another worker
+  email_slot_taken_enabled?: boolean
+  email_slot_taken_subject?: string
+  email_slot_taken_intro?: string
 
   // ── Pagina copy ───────────────────────────────────────────────────────────
   copy_step1_subtitle?: string   // "Kies een datum en tijdslot"

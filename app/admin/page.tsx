@@ -6,12 +6,13 @@ import { useSearchParams } from 'next/navigation'
 type Worker = { id: string; name: string; email: string; google_calendar_id: string; created_at?: string }
 type Tab = 'dashboard' | 'bookings' | 'workers' | 'calendar' | 'settings'
 
-const NAV_ITEMS: { id: Tab; label: string; icon: string }[] = [
+const NAV_ITEMS: { id: Tab; label: string; icon: string; href?: string }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: '⊞' },
   { id: 'bookings',  label: 'Boekingen',  icon: '📋' },
   { id: 'workers',   label: 'Workers',    icon: '👥' },
   { id: 'calendar',  label: 'Kalender',   icon: '📅' },
   { id: 'settings',  label: 'Instellingen', icon: '⚙️' },
+  { id: 'settings',  label: 'Bekijk planning', icon: '🗓️', href: 'https://calendar.google.com/calendar/u/4/r/month' },
 ]
 
 // Inner component so useSearchParams() is inside a Suspense boundary (Next.js 14 requirement)
@@ -131,20 +132,35 @@ function AdminPageInner() {
         </div>
 
         <nav style={{ flex: 1, padding: '8px 10px' }}>
-          {NAV_ITEMS.map(({ id, label, icon }) => {
-            const active = tab === id
+          {NAV_ITEMS.map(({ id, label, icon, href }, idx) => {
+            const active = !href && tab === id
+            const navStyle: React.CSSProperties = {
+              display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+              padding: '10px 12px', borderRadius: 8, border: 'none', cursor: 'pointer',
+              marginBottom: 2, textAlign: 'left', fontSize: 14, fontWeight: active ? 600 : 400,
+              background: active ? 'rgba(255,255,255,.12)' : 'transparent',
+              color: active ? '#fff' : '#9ca3af',
+              transition: 'all .15s', textDecoration: 'none', boxSizing: 'border-box',
+            }
+            if (href) {
+              return (
+                <a
+                  key={`${id}-${idx}`}
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={navStyle}
+                >
+                  <span style={{ fontSize: 16 }}>{icon}</span>
+                  {label}
+                </a>
+              )
+            }
             return (
               <button
-                key={id}
+                key={`${id}-${idx}`}
                 onClick={() => setTab(id)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 10, width: '100%',
-                  padding: '10px 12px', borderRadius: 8, border: 'none', cursor: 'pointer',
-                  marginBottom: 2, textAlign: 'left', fontSize: 14, fontWeight: active ? 600 : 400,
-                  background: active ? 'rgba(255,255,255,.12)' : 'transparent',
-                  color: active ? '#fff' : '#9ca3af',
-                  transition: 'all .15s',
-                }}
+                style={navStyle}
               >
                 <span style={{ fontSize: 16 }}>{icon}</span>
                 {label}
@@ -1391,7 +1407,10 @@ function SettingsPanel({ password }: { password: string }) {
   const [emailWorkerSubject, setEmailWorkerSubject] = useState('')
   const [emailWorkerIntro, setEmailWorkerIntro] = useState('')
   const [workerMsgDefault, setWorkerMsgDefault] = useState('')
-  const [activeEmailTab, setActiveEmailTab] = useState<'received' | 'approved' | 'denied' | 'worker'>('received')
+  const [emailSlotTakenEnabled, setEmailSlotTakenEnabled] = useState(true)
+  const [emailSlotTakenSubject, setEmailSlotTakenSubject] = useState('')
+  const [emailSlotTakenIntro, setEmailSlotTakenIntro] = useState('')
+  const [activeEmailTab, setActiveEmailTab] = useState<'received' | 'approved' | 'denied' | 'worker' | 'slot_taken'>('received')
 
   // Refs for placeholder insertion
   const refReceivedSubject = useRef<HTMLInputElement>(null)
@@ -1403,6 +1422,8 @@ function SettingsPanel({ password }: { password: string }) {
   const refWorkerSubject = useRef<HTMLInputElement>(null)
   const refWorkerIntro = useRef<HTMLTextAreaElement>(null)
   const refWorkerMsgDefault = useRef<HTMLTextAreaElement>(null)
+  const refSlotTakenSubject = useRef<HTMLInputElement>(null)
+  const refSlotTakenIntro = useRef<HTMLTextAreaElement>(null)
   const refCopyStep1 = useRef<HTMLInputElement>(null)
   const refCopyStep2 = useRef<HTMLInputElement>(null)
   const refCopyStep3 = useRef<HTMLInputElement>(null)
@@ -1457,6 +1478,9 @@ function SettingsPanel({ password }: { password: string }) {
     setEmailWorkerSubject(s.email_worker_subject ?? 'Nieuw boekingsverzoek – {{tour_date}} om {{tour_time}}')
     setEmailWorkerIntro(s.email_worker_intro ?? 'Er is een nieuwe touraanvraag binnengekomen. Kun jij de tour begeleiden?')
     setWorkerMsgDefault(s.worker_message_accepted_default ?? 'Alles in orde. Tot ziens!')
+    setEmailSlotTakenEnabled(s.email_slot_taken_enabled !== false)
+    setEmailSlotTakenSubject(s.email_slot_taken_subject ?? '')
+    setEmailSlotTakenIntro(s.email_slot_taken_intro ?? '')
     // Pagina's
     setCopyStep1(s.copy_step1_subtitle ?? 'Kies een datum en tijdslot')
     setCopyStep2(s.copy_step2_subtitle ?? 'Vertel ons meer over jullie groep')
@@ -1491,6 +1515,9 @@ function SettingsPanel({ password }: { password: string }) {
         email_worker_subject: emailWorkerSubject,
         email_worker_intro: emailWorkerIntro,
         worker_message_accepted_default: workerMsgDefault,
+        email_slot_taken_enabled: emailSlotTakenEnabled,
+        email_slot_taken_subject: emailSlotTakenSubject,
+        email_slot_taken_intro: emailSlotTakenIntro,
         // Pagina's
         copy_step1_subtitle: copyStep1,
         copy_step2_subtitle: copyStep2,
@@ -1534,6 +1561,7 @@ function SettingsPanel({ password }: { password: string }) {
     { id: 'approved', label: 'Tour bevestigd', desc: 'Bezoeker ontvangt dit wanneer de boeking wordt goedgekeurd.' },
     { id: 'denied', label: 'Tour geweigerd', desc: 'Bezoeker ontvangt dit wanneer de boeking wordt afgewezen.' },
     { id: 'worker', label: 'Worker notificatie', desc: 'Medewerker ontvangt dit bij een nieuwe aanvraag.' },
+    { id: 'slot_taken', label: 'Boeking al ingenomen', desc: 'Medewerker ontvangt dit wanneer een collega de boeking al heeft overgenomen.' },
   ]
 
   if (loading) return <div style={{ padding: '48px 0', color: '#9ca3af' }}>Laden…</div>
@@ -1655,6 +1683,46 @@ function SettingsPanel({ password }: { password: string }) {
                   <textarea ref={refWorkerMsgDefault} value={workerMsgDefault} onChange={e => setWorkerMsgDefault(e.target.value)} style={SF_TEXTAREA} rows={3} />
                   <PlaceholderChips placeholders={BOOKING_PLACEHOLDERS} targetRef={refWorkerMsgDefault} />
                 </SettingsField>
+              </div>
+            )}
+
+            {activeEmailTab === 'slot_taken' && (
+              <div>
+                <p style={{ margin: '0 0 16px', fontSize: 13, color: '#9ca3af' }}>{EMAIL_TABS[4].desc}</p>
+
+                {/* Enable/disable toggle */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: emailSlotTakenEnabled ? '#f0fdf4' : '#fef2f2', border: `1px solid ${emailSlotTakenEnabled ? '#bbf7d0' : '#fecaca'}`, borderRadius: 10, marginBottom: 20 }}>
+                  <div>
+                    <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#374151' }}>E-mail verzenden</p>
+                    <p style={{ margin: '2px 0 0', fontSize: 12, color: '#6b7280' }}>Schakel uit als workers geen melding meer moeten krijgen.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setEmailSlotTakenEnabled(v => !v)}
+                    style={{
+                      width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer', padding: 0, position: 'relative',
+                      background: emailSlotTakenEnabled ? '#16a34a' : '#d1d5db', transition: 'background .2s',
+                    }}
+                  >
+                    <span style={{
+                      position: 'absolute', top: 2, left: emailSlotTakenEnabled ? 22 : 2, width: 20, height: 20,
+                      borderRadius: 10, background: '#fff', transition: 'left .2s',
+                    }} />
+                  </button>
+                </div>
+
+                {emailSlotTakenEnabled && (
+                  <>
+                    <SettingsField label="Onderwerpregel">
+                      <input ref={refSlotTakenSubject} value={emailSlotTakenSubject} onChange={e => setEmailSlotTakenSubject(e.target.value)} placeholder={`Boeking al ingenomen – {{tour_date}} om {{tour_time}}`} style={SF_INPUT} />
+                      <PlaceholderChips placeholders={WORKER_PLACEHOLDERS} targetRef={refSlotTakenSubject} />
+                    </SettingsField>
+                    <SettingsField label="Introductietekst">
+                      <textarea ref={refSlotTakenIntro} value={emailSlotTakenIntro} onChange={e => setEmailSlotTakenIntro(e.target.value)} placeholder={`De tour op {{tour_date}} om {{tour_time}} is al door een collega overgenomen. Geen actie nodig.`} style={SF_TEXTAREA} rows={3} />
+                      <PlaceholderChips placeholders={WORKER_PLACEHOLDERS} targetRef={refSlotTakenIntro} />
+                    </SettingsField>
+                  </>
+                )}
               </div>
             )}
           </div>

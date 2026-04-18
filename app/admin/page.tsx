@@ -783,6 +783,7 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
   const [activeBooking, setActiveBooking] = useState<any | null>(null)
   const [savingModal, setSavingModal] = useState(false)
   const [deletingModal, setDeletingModal] = useState(false)
+  const [addingToCalendar, setAddingToCalendar] = useState(false)
   const [notifyVisitor, setNotifyVisitor] = useState(true)
 
   // Filters
@@ -959,6 +960,29 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
       setMessageType('error')
     } finally {
       setDeletingModal(false)
+    }
+  }
+
+  async function forceAddToCalendar() {
+    if (!activeBooking) return
+    setAddingToCalendar(true)
+    try {
+      const res = await fetch(`/api/admin/bookings/${activeBooking.id}/calendar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.ok) throw new Error(data.message || 'Mislukt')
+      const extra = data.pending ? ' (als onbevestigd — gele kleur in agenda)' : ''
+      setMessage(`📅 Toegevoegd aan Google Agenda${extra}`)
+      setMessageType('success')
+      fetchBookings()
+    } catch (err: any) {
+      setMessage(err.message || 'Fout bij toevoegen aan agenda')
+      setMessageType('error')
+    } finally {
+      setAddingToCalendar(false)
     }
   }
 
@@ -1204,13 +1228,27 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
 
             {/* Sticky footer */}
             <div style={{ padding: '14px 24px', borderTop: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0, background: '#fff', borderRadius: '0 0 16px 16px' }}>
-              <button
-                onClick={deleteActiveBooking}
-                disabled={deletingModal || savingModal}
-                style={{ padding: '9px 16px', borderRadius: 10, border: '1px solid #fecaca', color: '#dc2626', background: '#fee2e2', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}
-              >
-                {deletingModal ? 'Verwijderen…' : '🗑 Verwijderen'}
-              </button>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  onClick={deleteActiveBooking}
+                  disabled={deletingModal || savingModal || addingToCalendar}
+                  style={{ padding: '9px 16px', borderRadius: 10, border: '1px solid #fecaca', color: '#dc2626', background: '#fee2e2', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}
+                >
+                  {deletingModal ? 'Verwijderen…' : '🗑 Verwijderen'}
+                </button>
+                <button
+                  onClick={forceAddToCalendar}
+                  disabled={addingToCalendar || savingModal || deletingModal}
+                  title={formStatus !== 'approved' ? 'Wordt als onbevestigd (geel) in agenda gezet' : 'Voeg toe aan Google Agenda'}
+                  style={{
+                    padding: '9px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                    border: '1px solid #fde68a', background: '#fef9c3', color: '#92400e',
+                    opacity: addingToCalendar ? 0.7 : 1,
+                  }}
+                >
+                  {addingToCalendar ? 'Toevoegen…' : formStatus !== 'approved' ? '📅 Zet in agenda ⚠️' : '📅 Zet in agenda'}
+                </button>
+              </div>
               <div style={{ display: 'flex', gap: 8 }}>
                 <button
                   onClick={closeModal}
@@ -1220,7 +1258,7 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
                 </button>
                 <button
                   onClick={saveModalEdits}
-                  disabled={savingModal || deletingModal}
+                  disabled={savingModal || deletingModal || addingToCalendar}
                   style={{ padding: '9px 20px', borderRadius: 10, border: 'none', background: '#111827', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}
                 >
                   {savingModal ? 'Opslaan…' : 'Opslaan'}

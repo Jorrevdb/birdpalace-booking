@@ -533,6 +533,39 @@ export async function createBookingEvent(booking: Booking): Promise<string | nul
 }
 
 /**
+ * Force-create a calendar event from the admin panel (manual override).
+ * When pending=true, the event gets a yellow color and [ONBEVESTIGD] prefix
+ * so it's visually distinct from confirmed tours.
+ * Returns the event ID, or null on failure (with error logged).
+ */
+export async function forceCreateBookingEvent(
+  booking: Booking,
+  pending = false
+): Promise<string | null> {
+  const ctx = await getCalendarClient()
+  if (!ctx) return null
+
+  const { cal, conn } = ctx
+  const settings = await getSettings()
+  const duration = getTourDuration(settings.tour_duration_minutes)
+
+  const body = buildEventBody(booking, duration) as any
+
+  if (pending) {
+    // Yellow (Banana) color + clearly marked as unconfirmed
+    body.colorId = '5'
+    body.summary = `[ONBEVESTIGD] ${body.summary}`
+    body.description = `⚠️ Status: ONBEVESTIGD — handmatig toegevoegd vanuit admin\n\n${body.description}`
+  }
+
+  const res = await cal.events.insert({
+    calendarId: conn.calendar_id,
+    requestBody: body,
+  })
+  return res.data.id ?? null
+}
+
+/**
  * Update an existing calendar event (e.g. when date/time changes in admin).
  * Fails silently.
  */

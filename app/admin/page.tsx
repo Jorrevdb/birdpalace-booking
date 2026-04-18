@@ -815,6 +815,21 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
   const [exportStatusFilter, setExportStatusFilter] = useState<'all' | 'approved' | 'pending' | 'denied'>('all')
   const [exportColumns, setExportColumns] = useState<ExportColumn[]>(DEFAULT_EXPORT_COLUMNS)
 
+  // Create booking
+  const [createOpen, setCreateOpen] = useState(false)
+  const [createSaving, setCreateSaving] = useState(false)
+  const [createDate, setCreateDate] = useState('')
+  const [createTime, setCreateTime] = useState('')
+  const [createAdults, setCreateAdults] = useState(1)
+  const [createChildren, setCreateChildren] = useState(0)
+  const [createName, setCreateName] = useState('')
+  const [createEmail, setCreateEmail] = useState('')
+  const [createPhone, setCreatePhone] = useState('')
+  const [createMessage, setCreateMessage] = useState('')
+  const [createStatus, setCreateStatus] = useState('approved')
+  const [createNotify, setCreateNotify] = useState(false)
+  const [createAddCal, setCreateAddCal] = useState(true)
+
   const [formStatus, setFormStatus] = useState('pending')
   const [formDate, setFormDate] = useState('')
   const [formTime, setFormTime] = useState('')
@@ -1139,6 +1154,62 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
     }
   }
 
+  function openCreateModal() {
+    // Pre-fill date with today
+    setCreateDate(new Date().toISOString().slice(0, 10))
+    setCreateTime('')
+    setCreateAdults(1)
+    setCreateChildren(0)
+    setCreateName('')
+    setCreateEmail('')
+    setCreatePhone('')
+    setCreateMessage('')
+    setCreateStatus('approved')
+    setCreateNotify(false)
+    setCreateAddCal(true)
+    setCreateOpen(true)
+  }
+
+  async function saveNewBooking() {
+    if (!createDate || !createTime) {
+      setMessage('Datum en tijdslot zijn verplicht.')
+      setMessageType('error')
+      return
+    }
+    setCreateSaving(true)
+    try {
+      const res = await fetch('/api/admin/bookings/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          password,
+          tour_date: createDate,
+          tour_time: createTime,
+          adults: createAdults,
+          children_count: createChildren,
+          visitor_name: createName,
+          visitor_email: createEmail,
+          visitor_phone: createPhone,
+          visitor_message: createMessage,
+          status: createStatus,
+          notify_visitor: createNotify && !!createEmail.trim(),
+          add_to_calendar: createAddCal,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.ok) throw new Error(data.message || 'Mislukt')
+      setCreateOpen(false)
+      fetchBookings()
+      setMessage(`✓ Boeking aangemaakt${createAddCal ? ' en toegevoegd aan agenda' : ''}${createNotify && createEmail ? ' — bevestigingsmail verstuurd' : ''}.`)
+      setMessageType('success')
+    } catch (err: any) {
+      setMessage(err.message || 'Fout bij aanmaken boeking')
+      setMessageType('error')
+    } finally {
+      setCreateSaving(false)
+    }
+  }
+
   function closeModal() {
     setModalOpen(false)
     setActiveBooking(null)
@@ -1170,19 +1241,33 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
 
   return (
     <div>
-      {/* ── Filter bar ── */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-        {/* Search */}
+      {/* ── Actie-balk ── */}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 10, alignItems: 'center' }}>
         <input
           type="search"
-          placeholder="🔍  Zoek op naam, e-mail of datum…"
+          placeholder="🔍  Zoek op naam, e-mail, telefoon of datum…"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          style={{ padding: '8px 14px', borderRadius: 10, border: '1px solid #d1d5db', fontSize: 14, minWidth: 230, outline: 'none' }}
+          style={{ flex: 1, padding: '9px 14px', borderRadius: 10, border: '1px solid #d1d5db', fontSize: 14, outline: 'none', minWidth: 0 }}
         />
+        <button
+          onClick={openCreateModal}
+          style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 16px', borderRadius: 10, border: 'none', background: '#111827', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}
+        >
+          + Nieuwe boeking
+        </button>
+        <button
+          onClick={() => setExportOpen(true)}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 14px', borderRadius: 10, border: '1px solid #d1d5db', background: '#fff', fontSize: 13, fontWeight: 600, color: '#374151', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}
+        >
+          📊 Exporteren
+        </button>
+      </div>
 
+      {/* ── Filter-balk ── */}
+      <div style={{ display: 'flex', gap: 12, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap', padding: '10px 14px', background: '#f9fafb', borderRadius: 10, border: '1px solid #f3f4f6' }}>
         {/* Status filter */}
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
           {([
             { key: 'all' as const, label: 'Alle' },
             { key: 'pending' as const, label: `Afwachtend${pendingUpcomingCount > 0 ? ` (${pendingUpcomingCount})` : ''}` },
@@ -1196,8 +1281,8 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
                 ...filterBtnBase,
                 ...(filterStatus === key
                   ? key === 'approved' ? { background: 'var(--primary-color-600)', color: '#fff', borderColor: 'var(--primary-color-600)' }
-                  : key === 'denied' ? { background: '#dc2626', color: '#fff', borderColor: '#dc2626' }
-                  : key === 'pending' ? { background: '#f59e0b', color: '#fff', borderColor: '#f59e0b' }
+                  : key === 'denied'   ? { background: '#dc2626', color: '#fff', borderColor: '#dc2626' }
+                  : key === 'pending'  ? { background: '#f59e0b', color: '#fff', borderColor: '#f59e0b' }
                   : filterBtnActive
                   : filterBtnInactive)
               }}
@@ -1207,12 +1292,15 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
           ))}
         </div>
 
+        {/* Divider */}
+        <div style={{ width: 1, height: 22, background: '#e5e7eb', flexShrink: 0 }} />
+
         {/* Time filter */}
-        <div style={{ display: 'flex', gap: 6 }}>
+        <div style={{ display: 'flex', gap: 5 }}>
           {([
             { key: 'upcoming' as const, label: '📅 Aankomend' },
-            { key: 'past' as const, label: '🗓 Verleden' },
-            { key: 'all' as const, label: 'Alle' },
+            { key: 'past'     as const, label: '🗓 Verleden' },
+            { key: 'all'      as const, label: 'Alle' },
           ]).map(({ key, label }) => (
             <button
               key={key}
@@ -1227,12 +1315,6 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
         <span style={{ fontSize: 13, color: '#9ca3af', marginLeft: 'auto' }}>
           {filteredBookings.length} resultaat{filteredBookings.length !== 1 ? 'en' : ''}
         </span>
-        <button
-          onClick={() => setExportOpen(true)}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 10, border: '1px solid #d1d5db', background: '#fff', fontSize: 13, fontWeight: 600, color: '#374151', cursor: 'pointer' }}
-        >
-          📊 Export Excel
-        </button>
       </div>
 
       {loading ? (
@@ -1522,6 +1604,227 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
                 }}
               >
                 ↓ Download Excel ({exportPreviewCount} rijen)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Create booking modal ── */}
+      {createOpen && (
+        <div
+          onClick={() => { if (!createSaving) setCreateOpen(false) }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 16 }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ position: 'relative', background: '#fff', borderRadius: 16, width: 640, maxWidth: '100%', maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 60px rgba(0,0,0,0.3)' }}
+          >
+            {/* Header */}
+            <div style={{ padding: '18px 24px 14px', borderBottom: '1px solid #f3f4f6', flexShrink: 0 }}>
+              <button
+                onClick={() => { if (!createSaving) setCreateOpen(false) }}
+                style={{ position: 'absolute', top: 14, right: 14, width: 30, height: 30, borderRadius: 999, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', fontSize: 16, color: '#6b7280', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >×</button>
+              <h2 style={{ margin: 0, fontSize: 19, fontWeight: 700, color: '#111827' }}>+ Nieuwe boeking</h2>
+              <p style={{ margin: '3px 0 0', fontSize: 12, color: '#9ca3af' }}>Handmatig toevoegen — bv. voor telefonische boekingen. Ontbrekende info is oké.</p>
+            </div>
+
+            {/* Body */}
+            <div style={{ overflowY: 'auto', padding: '20px 24px', flexGrow: 1 }}>
+
+              {/* Datum & tijdslot */}
+              <p style={{ margin: '0 0 10px', fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.06em' }}>Boekingsgegevens <span style={{ color: '#dc2626' }}>*</span></p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 160px', gap: 12, marginBottom: 16 }}>
+                <label style={{ display: 'block' }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Datum <span style={{ color: '#dc2626' }}>*</span></span>
+                  <input
+                    type="date"
+                    value={createDate}
+                    onChange={(e) => setCreateDate(e.target.value)}
+                    disabled={createSaving}
+                    style={{ display: 'block', marginTop: 5, width: '100%', padding: '9px 12px', borderRadius: 10, border: `1px solid ${!createDate ? '#f87171' : '#d1d5db'}`, fontSize: 14, boxSizing: 'border-box' }}
+                  />
+                </label>
+                <label style={{ display: 'block' }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Tijdslot <span style={{ color: '#dc2626' }}>*</span></span>
+                  <input
+                    type="text"
+                    value={createTime}
+                    onChange={(e) => setCreateTime(e.target.value)}
+                    placeholder="bv. 10:00"
+                    disabled={createSaving}
+                    style={{ display: 'block', marginTop: 5, width: '100%', padding: '9px 12px', borderRadius: 10, border: `1px solid ${!createTime ? '#f87171' : '#d1d5db'}`, fontSize: 14, boxSizing: 'border-box' }}
+                  />
+                </label>
+              </div>
+
+              {/* Aantallen */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 6 }}>
+                <label style={{ display: 'block' }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Volwassenen (+12j)</span>
+                  <input
+                    type="number"
+                    min={1}
+                    value={createAdults}
+                    onChange={(e) => setCreateAdults(Math.max(1, Number(e.target.value || 1)))}
+                    disabled={createSaving}
+                    style={{ display: 'block', marginTop: 5, width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #d1d5db', fontSize: 14, boxSizing: 'border-box' }}
+                  />
+                </label>
+                <label style={{ display: 'block' }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Kinderen (-12j)</span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={createChildren}
+                    onChange={(e) => setCreateChildren(Math.max(0, Number(e.target.value || 0)))}
+                    disabled={createSaving}
+                    style={{ display: 'block', marginTop: 5, width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #d1d5db', fontSize: 14, boxSizing: 'border-box' }}
+                  />
+                </label>
+              </div>
+              <p style={{ margin: '0 0 20px', fontSize: 13, color: '#6b7280' }}>
+                Totaal: <strong style={{ color: '#111827' }}>{createAdults + createChildren} personen</strong>
+              </p>
+
+              {/* Status */}
+              <div style={{ marginBottom: 20 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Status</span>
+                <select
+                  value={createStatus}
+                  onChange={(e) => setCreateStatus(e.target.value)}
+                  disabled={createSaving}
+                  style={{ display: 'block', marginTop: 5, padding: '9px 12px', borderRadius: 10, border: '1px solid #d1d5db', fontSize: 14, cursor: 'pointer', background: '#fff', width: '100%', boxSizing: 'border-box' }}
+                >
+                  <option value="approved">Geaccepteerd</option>
+                  <option value="pending">Afwachtend</option>
+                  <option value="denied">Geweigerd</option>
+                </select>
+              </div>
+
+              {/* Divider */}
+              <div style={{ borderTop: '1px solid #f3f4f6', marginBottom: 20 }} />
+
+              {/* Klantgegevens */}
+              <p style={{ margin: '0 0 10px', fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.06em' }}>Klantgegevens <span style={{ fontWeight: 400, color: '#9ca3af' }}>(optioneel)</span></p>
+
+              <label style={{ display: 'block', marginBottom: 12 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Naam</span>
+                <input
+                  type="text"
+                  value={createName}
+                  onChange={(e) => setCreateName(e.target.value)}
+                  placeholder="Jan Janssens"
+                  disabled={createSaving}
+                  style={{ display: 'block', marginTop: 5, width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #d1d5db', fontSize: 14, boxSizing: 'border-box' }}
+                />
+              </label>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                <label style={{ display: 'block' }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>E-mailadres</span>
+                  <input
+                    type="email"
+                    value={createEmail}
+                    onChange={(e) => setCreateEmail(e.target.value)}
+                    placeholder="jan@voorbeeld.be"
+                    disabled={createSaving}
+                    style={{ display: 'block', marginTop: 5, width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #d1d5db', fontSize: 14, boxSizing: 'border-box' }}
+                  />
+                </label>
+                <label style={{ display: 'block' }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Telefoonnummer</span>
+                  <input
+                    type="tel"
+                    value={createPhone}
+                    onChange={(e) => setCreatePhone(e.target.value)}
+                    placeholder="+32 470 12 34 56"
+                    disabled={createSaving}
+                    style={{ display: 'block', marginTop: 5, width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #d1d5db', fontSize: 14, boxSizing: 'border-box' }}
+                  />
+                </label>
+              </div>
+
+              <label style={{ display: 'block', marginBottom: 20 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Opmerking <span style={{ fontWeight: 400, color: '#9ca3af' }}>(optioneel)</span></span>
+                <textarea
+                  value={createMessage}
+                  onChange={(e) => setCreateMessage(e.target.value)}
+                  placeholder="Eventuele notities over deze boeking…"
+                  rows={2}
+                  disabled={createSaving}
+                  style={{ display: 'block', marginTop: 5, width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #d1d5db', fontSize: 14, resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit' }}
+                />
+              </label>
+
+              {/* Divider */}
+              <div style={{ borderTop: '1px solid #f3f4f6', marginBottom: 16 }} />
+
+              {/* Opties */}
+              <p style={{ margin: '0 0 10px', fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.06em' }}>Opties</p>
+
+              <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', marginBottom: 10 }}>
+                <input
+                  type="checkbox"
+                  checked={createAddCal}
+                  onChange={(e) => setCreateAddCal(e.target.checked)}
+                  disabled={createSaving}
+                  style={{ width: 16, height: 16 }}
+                />
+                <span style={{ fontSize: 14, color: '#374151' }}>
+                  📅 Toevoegen aan Google Agenda
+                  {createStatus !== 'approved' && (
+                    <span style={{ marginLeft: 6, fontSize: 12, color: '#92400e', background: '#fef9c3', border: '1px solid #fde68a', borderRadius: 6, padding: '1px 7px' }}>
+                      ⚠️ wordt als onbevestigd toegevoegd
+                    </span>
+                  )}
+                </span>
+              </label>
+
+              <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: createEmail.trim() ? 'pointer' : 'not-allowed', opacity: createEmail.trim() ? 1 : 0.5 }}>
+                <input
+                  type="checkbox"
+                  checked={createNotify}
+                  onChange={(e) => setCreateNotify(e.target.checked)}
+                  disabled={createSaving || !createEmail.trim()}
+                  style={{ width: 16, height: 16 }}
+                />
+                <span style={{ fontSize: 14, color: '#374151' }}>
+                  ✉️ Bevestigingsmail sturen naar bezoeker
+                  {!createEmail.trim() && (
+                    <span style={{ marginLeft: 6, fontSize: 12, color: '#9ca3af' }}>(e-mailadres vereist)</span>
+                  )}
+                </span>
+              </label>
+
+            </div>
+
+            {/* Footer */}
+            <div style={{ padding: '14px 24px', borderTop: '1px solid #f3f4f6', display: 'flex', justifyContent: 'flex-end', gap: 10, flexShrink: 0, background: '#fff', borderRadius: '0 0 16px 16px' }}>
+              <button
+                onClick={() => { if (!createSaving) setCreateOpen(false) }}
+                disabled={createSaving}
+                style={{ padding: '9px 18px', borderRadius: 10, border: '1px solid #e5e7eb', background: '#fff', color: '#374151', fontWeight: 600, cursor: 'pointer', fontSize: 14 }}
+              >
+                Annuleren
+              </button>
+              <button
+                onClick={saveNewBooking}
+                disabled={createSaving || !createDate || !createTime}
+                style={{
+                  padding: '9px 22px', borderRadius: 10, border: 'none', fontSize: 14, fontWeight: 700, cursor: createSaving || !createDate || !createTime ? 'not-allowed' : 'pointer',
+                  background: createSaving || !createDate || !createTime ? '#e5e7eb' : '#111827',
+                  color: createSaving || !createDate || !createTime ? '#9ca3af' : '#fff',
+                  display: 'flex', alignItems: 'center', gap: 8,
+                }}
+              >
+                {createSaving ? (
+                  <>
+                    <span style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.7s linear infinite' }} />
+                    Bezig…
+                  </>
+                ) : '+ Boeking aanmaken'}
               </button>
             </div>
           </div>

@@ -2,7 +2,23 @@
 
 import React, { useEffect, useState, useRef, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { type ExportColumn, DEFAULT_EXPORT_COLUMNS } from '@/lib/settings'
+import type { ExportColumn } from '@/lib/settings'
+
+const DEFAULT_EXPORT_COLUMNS: ExportColumn[] = [
+  { key: 'tour_date',             label: 'Datum',               enabled: true  },
+  { key: 'tour_time',             label: 'Tijdslot',            enabled: true  },
+  { key: 'visitor_name',          label: 'Naam',                enabled: true  },
+  { key: 'visitor_email',         label: 'E-mail',              enabled: true  },
+  { key: 'visitor_phone',         label: 'Telefoon',            enabled: true  },
+  { key: 'adults',                label: 'Volwassenen (+12j)',   enabled: true  },
+  { key: 'children_count',        label: 'Kinderen (-12j)',      enabled: true  },
+  { key: 'total_people',          label: 'Totaal personen',      enabled: true  },
+  { key: 'penguin_feeding_count', label: 'Pinguïns voeren',     enabled: false },
+  { key: 'status',                label: 'Status',               enabled: true  },
+  { key: 'visitor_message',       label: 'Opmerking bezoeker',  enabled: false },
+  { key: 'worker_message',        label: 'Bericht worker',       enabled: false },
+  { key: 'created_at',            label: 'Aangemaakt op',        enabled: false },
+]
 
 type Worker = { id: string; name: string; email: string; google_calendar_id: string; created_at?: string }
 type Tab = 'dashboard' | 'bookings' | 'workers' | 'calendar' | 'settings'

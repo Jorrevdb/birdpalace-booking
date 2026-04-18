@@ -1442,7 +1442,11 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
                     </label>
                     <label style={{ display: 'block' }}>
                       <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Tijdslot</span>
-                      <input value={formTime} onChange={(e) => setFormTime(e.target.value)} style={{ display: 'block', marginTop: 5, width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #d1d5db', fontSize: 14, boxSizing: 'border-box' }} />
+                      <TimeInput
+                        value={formTime}
+                        onChange={setFormTime}
+                        style={{ display: 'block', marginTop: 5, width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #d1d5db', fontSize: 14, boxSizing: 'border-box' }}
+                      />
                     </label>
                   </div>
 
@@ -1670,11 +1674,9 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
                 </label>
                 <label style={{ display: 'block' }}>
                   <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Tijdslot <span style={{ color: '#dc2626' }}>*</span></span>
-                  <input
-                    type="text"
+                  <TimeInput
                     value={createTime}
-                    onChange={(e) => setCreateTime(e.target.value)}
-                    placeholder="bv. 10:00"
+                    onChange={setCreateTime}
                     disabled={createSaving}
                     style={{ display: 'block', marginTop: 5, width: '100%', padding: '9px 12px', borderRadius: 10, border: `1px solid ${!createTime ? '#f87171' : '#d1d5db'}`, fontSize: 14, boxSizing: 'border-box' }}
                   />
@@ -1877,6 +1879,88 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
         </div>
       )}
     </div>
+  )
+}
+
+// ── Time input helpers ────────────────────────────────────────────────────────
+/**
+ * Formats raw keystroke input to HH:MM.
+ * - Strips every non-digit character (including manual colons/dots/spaces)
+ * - Auto-inserts the colon after the first 2 digits
+ * - Clamps hours to 0-23 and minutes to 0-59
+ */
+function maskTime(raw: string): string {
+  const digits = raw.replace(/\D/g, '').slice(0, 4)
+  if (digits.length <= 2) return digits
+  const hh = Math.min(23, parseInt(digits.slice(0, 2), 10)).toString().padStart(2, '0')
+  const mm = digits.slice(2, 4)
+  return mm.length > 0 ? `${hh}:${mm}` : hh
+}
+
+/** Single HH:MM masked input */
+function TimeInput({
+  value,
+  onChange,
+  disabled,
+  style,
+  placeholder = 'HH:MM',
+}: {
+  value: string
+  onChange: (v: string) => void
+  disabled?: boolean
+  style?: React.CSSProperties
+  placeholder?: string
+}) {
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      maxLength={5}
+      placeholder={placeholder}
+      value={value}
+      disabled={disabled}
+      onChange={(e) => onChange(maskTime(e.target.value))}
+      style={style}
+    />
+  )
+}
+
+/**
+ * Comma-separated multi-slot input (e.g. "11:00,13:00,15:00").
+ * Each segment is individually masked to HH:MM.
+ */
+function MultiTimeInput({
+  value,
+  onChange,
+  style,
+  placeholder = '11:00,13:00,15:00',
+}: {
+  value: string
+  onChange: (v: string) => void
+  style?: React.CSSProperties
+  placeholder?: string
+}) {
+  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const raw = e.target.value
+    // Allow only digits and commas; rebuild each segment
+    const segments = raw.split(',')
+    const formatted = segments.map((seg) => {
+      // Strip colons so maskTime processes raw digits
+      const digits = seg.replace(/\D/g, '').slice(0, 4)
+      return maskTime(digits)
+    })
+    onChange(formatted.join(','))
+  }
+
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      placeholder={placeholder}
+      value={value}
+      onChange={handleChange}
+      style={style}
+    />
   )
 }
 
@@ -2936,9 +3020,13 @@ function CalendarPanel({ password }: { password: string }) {
                     />
                     Open
                   </label>
-                  <input
-                    value={activeTab.weekly_schedule?.[dayIndex]?.times ?? ''}
-                    onChange={(e) => updateActiveDay(dayIndex, { times: e.target.value })}
+                  <MultiTimeInput
+                    value={
+                      Array.isArray(activeTab.weekly_schedule?.[dayIndex]?.times)
+                        ? (activeTab.weekly_schedule[dayIndex].times as string[]).join(',')
+                        : (activeTab.weekly_schedule?.[dayIndex]?.times as string ?? '')
+                    }
+                    onChange={(v) => updateActiveDay(dayIndex, { times: v })}
                     placeholder="11:00,13:00,15:00"
                     style={{ width: '100%' }}
                   />

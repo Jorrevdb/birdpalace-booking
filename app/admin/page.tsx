@@ -145,9 +145,9 @@ function AdminPageInner() {
   const pageTitle = NAV_ITEMS.find(n => n.id === tab)?.label ?? ''
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: '#f8fafc', fontFamily: 'system-ui, sans-serif' }}>
-      {/* Sidebar */}
-      <aside style={{ width: 220, background: '#111827', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: '#f8fafc', fontFamily: 'system-ui, sans-serif' }}>
+      {/* Sidebar — fixed height, scrolls independently if content overflows */}
+      <aside style={{ width: 220, background: '#111827', display: 'flex', flexDirection: 'column', flexShrink: 0, height: '100vh', overflowY: 'auto' }}>
         <div style={{ padding: '24px 20px 16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ fontSize: 26 }}>🐦</span>
@@ -206,11 +206,11 @@ function AdminPageInner() {
         </div>
       </aside>
 
-      {/* Main */}
-      <main ref={mainRef} style={{ flex: 1, overflow: 'auto' }}>
-        {/* Header — sticky, collapses on scroll */}
+      {/* Main — the only scroll container */}
+      <main ref={mainRef} style={{ flex: 1, height: '100vh', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+        {/* Header — sticky inside the main scroll container */}
         <div style={{
-          position: 'sticky', top: 0, zIndex: 10,
+          position: 'sticky', top: 0, zIndex: 10, flexShrink: 0,
           padding: headerScrolled ? '10px 32px' : '22px 32px',
           borderBottom: '1px solid #e5e7eb',
           background: '#fff',
@@ -227,7 +227,7 @@ function AdminPageInner() {
         </div>
 
         {/* Content */}
-        <div style={{ padding: '28px 32px' }}>
+        <div style={{ padding: '28px 32px', flex: 1 }}>
           {tab === 'dashboard' && (
             <DashboardPanel
               password={password}

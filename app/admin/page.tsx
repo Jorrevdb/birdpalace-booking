@@ -1465,19 +1465,15 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
                   </p>
 
                   <label style={{ display: 'block', marginTop: 14 }}>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
-                      🐧 Pinguïns voeren
-                      <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 500, color: '#fff', background: '#6366f1', borderRadius: 4, padding: '1px 6px' }}>intern</span>
-                    </span>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: '#6b7280' }}>Pinguïns voeren</span>
                     <input
                       type="number"
                       min={0}
-                      placeholder="— onbekend"
+                      placeholder="—"
                       value={formPenguinFeeding}
                       onChange={(e) => setFormPenguinFeeding(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
-                      style={{ display: 'block', marginTop: 5, width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #a5b4fc', fontSize: 14, boxSizing: 'border-box', background: '#f5f3ff' }}
+                      style={{ display: 'block', marginTop: 5, width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 14, boxSizing: 'border-box', color: '#374151' }}
                     />
-                    <p style={{ margin: '4px 0 0', fontSize: 11, color: '#9ca3af' }}>Niet zichtbaar voor bezoekers — enkel intern beheer.</p>
                   </label>
 
                   <label style={{ display: 'block', marginTop: 14 }}>
@@ -1714,20 +1710,16 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
               </p>
 
               <label style={{ display: 'block', marginBottom: 20 }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
-                  🐧 Pinguïns voeren
-                  <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 500, color: '#fff', background: '#6366f1', borderRadius: 4, padding: '1px 6px' }}>intern</span>
-                </span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#6b7280' }}>Pinguïns voeren</span>
                 <input
                   type="number"
                   min={0}
-                  placeholder="— onbekend / leeg laten"
+                  placeholder="—"
                   value={createPenguinFeeding}
                   onChange={(e) => setCreatePenguinFeeding(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
                   disabled={createSaving}
-                  style={{ display: 'block', marginTop: 5, width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #a5b4fc', fontSize: 14, boxSizing: 'border-box', background: '#f5f3ff' }}
+                  style={{ display: 'block', marginTop: 5, width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 14, boxSizing: 'border-box', color: '#374151' }}
                 />
-                <p style={{ margin: '4px 0 0', fontSize: 11, color: '#9ca3af' }}>Niet zichtbaar voor bezoekers — enkel intern beheer.</p>
               </label>
 
               {/* Status */}

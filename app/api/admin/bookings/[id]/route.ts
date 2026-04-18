@@ -35,6 +35,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       if (typeof updates.visitor_phone === 'string') patch.visitor_phone = updates.visitor_phone
       if (typeof updates.total_people === 'number') patch.total_people = updates.total_people
       if (typeof updates.children_count === 'number') patch.children_count = updates.children_count
+      if (updates.penguin_feeding_count === null || typeof updates.penguin_feeding_count === 'number') patch.penguin_feeding_count = updates.penguin_feeding_count
       if (updates.worker_message === null || typeof updates.worker_message === 'string') patch.worker_message = updates.worker_message
     }
 

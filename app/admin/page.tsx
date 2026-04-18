@@ -808,6 +808,10 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
   const [filterTime, setFilterTime] = useState<'upcoming' | 'past' | 'all'>('upcoming')
   const [searchQuery, setSearchQuery] = useState('')
 
+  // Bulk select
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkDeleting, setBulkDeleting] = useState(false)
+
   // Export
   const [exportOpen, setExportOpen] = useState(false)
   const [exportFrom, setExportFrom] = useState('')
@@ -1217,6 +1221,30 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
     }
   }
 
+  async function bulkDelete() {
+    if (selectedIds.size === 0) return
+    if (!confirm(`Weet je zeker dat je ${selectedIds.size} boeking${selectedIds.size !== 1 ? 'en' : ''} wil verwijderen?`)) return
+    setBulkDeleting(true)
+    try {
+      await Promise.all(Array.from(selectedIds).map(id =>
+        fetch(`/api/admin/bookings/${id}`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password }),
+        })
+      ))
+      setSelectedIds(new Set())
+      fetchBookings()
+      setMessage(`${selectedIds.size} boeking${selectedIds.size !== 1 ? 'en' : ''} verwijderd.`)
+      setMessageType('success')
+    } catch (err: any) {
+      setMessage(err.message || 'Fout bij verwijderen')
+      setMessageType('error')
+    } finally {
+      setBulkDeleting(false)
+    }
+  }
+
   function closeModal() {
     setModalOpen(false)
     setActiveBooking(null)
@@ -1276,6 +1304,15 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
           >
             📊 Exporteren
           </button>
+          {selectedIds.size > 0 && (
+            <button
+              onClick={bulkDelete}
+              disabled={bulkDeleting}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 14px', borderRadius: 10, border: '1px solid #fecaca', background: '#fee2e2', fontSize: 13, fontWeight: 700, color: '#dc2626', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}
+            >
+              {bulkDeleting ? 'Verwijderen…' : `🗑 Verwijder ${selectedIds.size}`}
+            </button>
+          )}
         </div>
 
         {/* Filter-balk */}
@@ -1342,6 +1379,15 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
           <thead>
             <tr style={{ background: '#f9fafb' }}>
+              <th style={{ padding: '10px 12px', borderBottom: '2px solid #e5e7eb', width: 36 }}>
+                <input
+                  type="checkbox"
+                  checked={selectedIds.size === filteredBookings.length && filteredBookings.length > 0}
+                  ref={el => { if (el) el.indeterminate = selectedIds.size > 0 && selectedIds.size < filteredBookings.length }}
+                  onChange={(e) => setSelectedIds(e.target.checked ? new Set(filteredBookings.map(b => b.id)) : new Set())}
+                  style={{ cursor: 'pointer' }}
+                />
+              </th>
               <th style={{ textAlign: 'left', padding: '10px 12px', borderBottom: '2px solid #e5e7eb', fontWeight: 600, color: '#374151', fontSize: 12, textTransform: 'uppercase', letterSpacing: '.05em' }}>Datum</th>
               <th style={{ textAlign: 'left', padding: '10px 12px', borderBottom: '2px solid #e5e7eb', fontWeight: 600, color: '#374151', fontSize: 12, textTransform: 'uppercase', letterSpacing: '.05em' }}>Tijd</th>
               <th style={{ textAlign: 'left', padding: '10px 12px', borderBottom: '2px solid #e5e7eb', fontWeight: 600, color: '#374151', fontSize: 12, textTransform: 'uppercase', letterSpacing: '.05em' }}>Naam</th>
@@ -1361,14 +1407,26 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
                 <React.Fragment key={b.id}>
                   {showMonthSep && (
                     <tr>
-                      <td colSpan={6} style={{ padding: '14px 12px 6px', borderBottom: '1px solid #f3f4f6' }}>
+                      <td colSpan={7} style={{ padding: '14px 12px 6px', borderBottom: '1px solid #f3f4f6' }}>
                         <span style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.08em' }}>
                           — {monthLabel} —
                         </span>
                       </td>
                     </tr>
                   )}
-                  <tr style={{ opacity: isPast ? 0.55 : 1 }}>
+                  <tr style={{ opacity: isPast ? 0.55 : 1, background: selectedIds.has(b.id) ? '#fef2f2' : undefined }}>
+                    <td style={{ padding: '13px 12px', borderBottom: '1px solid #f3f4f6', width: 36 }}>
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(b.id)}
+                        onChange={(e) => {
+                          const next = new Set(selectedIds)
+                          e.target.checked ? next.add(b.id) : next.delete(b.id)
+                          setSelectedIds(next)
+                        }}
+                        style={{ cursor: 'pointer' }}
+                      />
+                    </td>
                     <td style={{ padding: '13px 12px', borderBottom: '1px solid #f3f4f6' }}>{formatNlDate(b.tour_date)}</td>
                     <td style={{ padding: '13px 12px', borderBottom: '1px solid #f3f4f6', fontWeight: 600 }}>{b.tour_time}</td>
                     <td style={{ padding: '13px 12px', borderBottom: '1px solid #f3f4f6' }}>

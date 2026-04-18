@@ -42,7 +42,32 @@ export type Settings = {
   copy_confirm_title?: string    // "Aanvraag ontvangen!"
   copy_confirm_body?: string     // "Wij checken bij de pinguïns..."
   copy_no_slots_text?: string    // shown when selected date has no available slots
+
+  // ── Excel export ───────────────────────────────────────────────────────────
+  export_columns?: ExportColumn[]
 }
+
+export type ExportColumn = {
+  key: string
+  label: string
+  enabled: boolean
+}
+
+export const DEFAULT_EXPORT_COLUMNS: ExportColumn[] = [
+  { key: 'tour_date',             label: 'Datum',              enabled: true  },
+  { key: 'tour_time',             label: 'Tijdslot',           enabled: true  },
+  { key: 'visitor_name',          label: 'Naam',               enabled: true  },
+  { key: 'visitor_email',         label: 'E-mail',             enabled: true  },
+  { key: 'visitor_phone',         label: 'Telefoon',           enabled: true  },
+  { key: 'adults',                label: 'Volwassenen (+12j)', enabled: true  },
+  { key: 'children_count',        label: 'Kinderen (-12j)',    enabled: true  },
+  { key: 'total_people',          label: 'Totaal personen',    enabled: true  },
+  { key: 'penguin_feeding_count', label: 'Pinguïns voeren',   enabled: false },
+  { key: 'status',                label: 'Status',             enabled: true  },
+  { key: 'visitor_message',       label: 'Opmerking bezoeker', enabled: false },
+  { key: 'worker_message',        label: 'Bericht worker',     enabled: false },
+  { key: 'created_at',            label: 'Aangemaakt op',      enabled: false },
+]
 
 export type WeeklyDayConfig = {
   enabled: boolean

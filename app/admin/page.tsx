@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useRef, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
+import { type ExportColumn, DEFAULT_EXPORT_COLUMNS } from '@/lib/settings'
 
 type Worker = { id: string; name: string; email: string; google_calendar_id: string; created_at?: string }
 type Tab = 'dashboard' | 'bookings' | 'workers' | 'calendar' | 'settings'
@@ -791,6 +792,13 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
   const [filterTime, setFilterTime] = useState<'upcoming' | 'past' | 'all'>('upcoming')
   const [searchQuery, setSearchQuery] = useState('')
 
+  // Export
+  const [exportOpen, setExportOpen] = useState(false)
+  const [exportFrom, setExportFrom] = useState('')
+  const [exportTo, setExportTo] = useState('')
+  const [exportStatusFilter, setExportStatusFilter] = useState<'all' | 'approved' | 'pending' | 'denied'>('all')
+  const [exportColumns, setExportColumns] = useState<ExportColumn[]>(DEFAULT_EXPORT_COLUMNS)
+
   const [formStatus, setFormStatus] = useState('pending')
   const [formDate, setFormDate] = useState('')
   const [formTime, setFormTime] = useState('')
@@ -825,9 +833,12 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
   async function fetchBookings() {
     setLoading(true)
     try {
-      const res = await fetch(`/api/admin/bookings/list?password=${encodeURIComponent(password)}`)
-      if (!res.ok) throw new Error('Unauthorized')
-      const data = await res.json()
+      const [bookRes, settingsRes] = await Promise.all([
+        fetch(`/api/admin/bookings/list?password=${encodeURIComponent(password)}`),
+        fetch(`/api/admin/settings?password=${encodeURIComponent(password)}`),
+      ])
+      if (!bookRes.ok) throw new Error('Unauthorized')
+      const data = await bookRes.json()
       const sorted = (data.bookings ?? []).slice().sort((a: any, b: any) => {
         const aKey = `${a.tour_date} ${a.tour_time}`
         const bKey = `${b.tour_date} ${b.tour_time}`
@@ -836,6 +847,16 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
         return 0
       })
       setBookings(sorted)
+      // Load export column config from settings
+      if (settingsRes.ok) {
+        const sData = await settingsRes.json()
+        const saved = sData.settings?.export_columns
+        if (Array.isArray(saved) && saved.length > 0) {
+          const savedKeys = new Set(saved.map((c: ExportColumn) => c.key))
+          const newDefaults = DEFAULT_EXPORT_COLUMNS.filter(c => !savedKeys.has(c.key))
+          setExportColumns([...saved, ...newDefaults])
+        }
+      }
     } catch (err: any) {
       setMessage(err.message || 'Failed to fetch bookings')
     } finally {
@@ -963,6 +984,122 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
     }
   }
 
+  // ── Export helpers ────────────────────────────────────────────────────────
+  function applyExportShortcut(shortcut: 'this_month' | 'last_month' | 'this_year' | 'all') {
+    const now = new Date()
+    const y = now.getFullYear()
+    const m = now.getMonth()
+    const pad = (n: number) => String(n).padStart(2, '0')
+    if (shortcut === 'this_month') {
+      setExportFrom(`${y}-${pad(m + 1)}-01`)
+      const lastDay = new Date(y, m + 1, 0).getDate()
+      setExportTo(`${y}-${pad(m + 1)}-${pad(lastDay)}`)
+    } else if (shortcut === 'last_month') {
+      const lm = m === 0 ? 11 : m - 1
+      const ly = m === 0 ? y - 1 : y
+      setExportFrom(`${ly}-${pad(lm + 1)}-01`)
+      const lastDay = new Date(ly, lm + 1, 0).getDate()
+      setExportTo(`${ly}-${pad(lm + 1)}-${pad(lastDay)}`)
+    } else if (shortcut === 'this_year') {
+      setExportFrom(`${y}-01-01`)
+      setExportTo(`${y}-12-31`)
+    } else {
+      setExportFrom('')
+      setExportTo('')
+    }
+  }
+
+  function exportToXLS() {
+    function escXml(v: any): string {
+      return String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+    }
+    function statusNL(s: string) {
+      if (s === 'approved') return 'Geaccepteerd'
+      if (s === 'denied') return 'Geweigerd'
+      return 'Afwachtend'
+    }
+    function cellValue(b: any, key: string): string {
+      switch (key) {
+        case 'adults':   return String(b.total_people - (b.children_count ?? 0))
+        case 'status':   return statusNL(b.status)
+        case 'created_at': return b.created_at ? new Date(b.created_at).toLocaleString('nl-BE') : ''
+        default:         return String(b[key] ?? '')
+      }
+    }
+
+    // Filter bookings by selected range + status
+    const rows = bookings.filter((b) => {
+      if (exportStatusFilter !== 'all' && b.status !== exportStatusFilter) return false
+      if (exportFrom && b.tour_date < exportFrom) return false
+      if (exportTo   && b.tour_date > exportTo)   return false
+      return true
+    })
+
+    const enabledCols = exportColumns.filter(c => c.enabled)
+
+    const headerRow = enabledCols
+      .map(c => `<Cell ss:StyleID="header"><Data ss:Type="String">${escXml(c.label)}</Data></Cell>`)
+      .join('')
+
+    const dataRows = rows.map(b => {
+      const cells = enabledCols.map(c => {
+        const val = cellValue(b, c.key)
+        // Use Number type for numeric fields
+        const numericKeys = ['adults', 'children_count', 'total_people', 'penguin_feeding_count']
+        const isNum = numericKeys.includes(c.key) && val !== '' && !isNaN(Number(val))
+        return `<Cell><Data ss:Type="${isNum ? 'Number' : 'String'}">${escXml(val)}</Data></Cell>`
+      }).join('')
+      return `<Row>${cells}</Row>`
+    }).join('\n      ')
+
+    const from = exportFrom || 'begin'
+    const to   = exportTo   || 'einde'
+
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+  xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+  xmlns:x="urn:schemas-microsoft-com:office:excel">
+  <Styles>
+    <Style ss:ID="header">
+      <Font ss:Bold="1"/>
+      <Interior ss:Color="#F3F4F6" ss:Pattern="Solid"/>
+    </Style>
+  </Styles>
+  <Worksheet ss:Name="Boekingen">
+    <Table>
+      <Row>${headerRow}</Row>
+      ${dataRows}
+    </Table>
+    <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+      <FreezePanes/>
+      <FrozenNoSplit/>
+      <SplitHorizontal>1</SplitHorizontal>
+      <TopRowBottomPane>1</TopRowBottomPane>
+    </WorksheetOptions>
+  </Worksheet>
+</Workbook>`
+
+    const blob = new Blob([xml], { type: 'application/vnd.ms-excel;charset=utf-8' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
+    a.download = `boekingen_${from}_${to}.xls`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    setExportOpen(false)
+  }
+
+  // ── Export preview count ──────────────────────────────────────────────────
+  const exportPreviewCount = bookings.filter((b) => {
+    if (exportStatusFilter !== 'all' && b.status !== exportStatusFilter) return false
+    if (exportFrom && b.tour_date < exportFrom) return false
+    if (exportTo   && b.tour_date > exportTo)   return false
+    return true
+  }).length
+
   async function forceAddToCalendar() {
     if (!activeBooking) return
     setAddingToCalendar(true)
@@ -1074,6 +1211,12 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
         <span style={{ fontSize: 13, color: '#9ca3af', marginLeft: 'auto' }}>
           {filteredBookings.length} resultaat{filteredBookings.length !== 1 ? 'en' : ''}
         </span>
+        <button
+          onClick={() => setExportOpen(true)}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 10, border: '1px solid #d1d5db', background: '#fff', fontSize: 13, fontWeight: 600, color: '#374151', cursor: 'pointer' }}
+        >
+          📊 Export Excel
+        </button>
       </div>
 
       {loading ? (
@@ -1269,6 +1412,106 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
         </div>
       )}
 
+      {/* ── Export modal ── */}
+      {exportOpen && (
+        <div
+          onClick={() => setExportOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 16 }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ background: '#fff', borderRadius: 16, width: 500, maxWidth: '100%', boxShadow: '0 25px 60px rgba(0,0,0,0.3)', overflow: 'hidden' }}
+          >
+            {/* Header */}
+            <div style={{ padding: '18px 24px 14px', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#111827' }}>📊 Export naar Excel</h2>
+                <p style={{ margin: '3px 0 0', fontSize: 12, color: '#9ca3af' }}>Selecteer periode en download direct</p>
+              </div>
+              <button onClick={() => setExportOpen(false)} style={{ width: 30, height: 30, borderRadius: 999, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', fontSize: 16, color: '#6b7280' }}>×</button>
+            </div>
+
+            <div style={{ padding: '20px 24px' }}>
+              {/* Periode */}
+              <p style={{ margin: '0 0 10px', fontSize: 13, fontWeight: 600, color: '#374151' }}>Periode</p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+                <label style={{ display: 'block' }}>
+                  <span style={{ fontSize: 12, color: '#6b7280' }}>Van</span>
+                  <input type="date" value={exportFrom} onChange={e => setExportFrom(e.target.value)}
+                    style={{ display: 'block', marginTop: 4, width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 14, boxSizing: 'border-box' }} />
+                </label>
+                <label style={{ display: 'block' }}>
+                  <span style={{ fontSize: 12, color: '#6b7280' }}>Tot</span>
+                  <input type="date" value={exportTo} onChange={e => setExportTo(e.target.value)}
+                    style={{ display: 'block', marginTop: 4, width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 14, boxSizing: 'border-box' }} />
+                </label>
+              </div>
+
+              {/* Shortcuts */}
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 20 }}>
+                {([
+                  { key: 'this_month' as const, label: 'Deze maand' },
+                  { key: 'last_month' as const, label: 'Vorige maand' },
+                  { key: 'this_year'  as const, label: 'Dit jaar' },
+                  { key: 'all'        as const, label: 'Alles' },
+                ]).map(({ key, label }) => (
+                  <button key={key} onClick={() => applyExportShortcut(key)}
+                    style={{ padding: '5px 12px', borderRadius: 999, border: '1px solid #d1d5db', background: '#f9fafb', fontSize: 13, cursor: 'pointer', color: '#374151', fontWeight: 500 }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Status filter */}
+              <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 600, color: '#374151' }}>Status</p>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 20 }}>
+                {([
+                  { key: 'all' as const, label: 'Alle' },
+                  { key: 'approved' as const, label: 'Geaccepteerd' },
+                  { key: 'pending' as const, label: 'Afwachtend' },
+                  { key: 'denied' as const, label: 'Geweigerd' },
+                ]).map(({ key, label }) => (
+                  <button key={key} onClick={() => setExportStatusFilter(key)}
+                    style={{
+                      padding: '5px 12px', borderRadius: 999, border: '1px solid', fontSize: 13, cursor: 'pointer', fontWeight: exportStatusFilter === key ? 700 : 400,
+                      background: exportStatusFilter === key ? '#111827' : '#fff',
+                      color: exportStatusFilter === key ? '#fff' : '#6b7280',
+                      borderColor: exportStatusFilter === key ? '#111827' : '#d1d5db',
+                    }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Preview count + enabled columns */}
+              <div style={{ padding: '12px 16px', background: '#f9fafb', borderRadius: 10, border: '1px solid #e5e7eb', marginBottom: 20 }}>
+                <p style={{ margin: 0, fontSize: 14, color: '#374151' }}>
+                  <strong style={{ color: '#111827' }}>{exportPreviewCount}</strong> boeking{exportPreviewCount !== 1 ? 'en' : ''} worden geëxporteerd
+                </p>
+                <p style={{ margin: '4px 0 0', fontSize: 12, color: '#9ca3af' }}>
+                  Kolommen: {exportColumns.filter(c => c.enabled).map(c => c.label).join(', ')}
+                </p>
+                <p style={{ margin: '4px 0 0', fontSize: 12, color: '#9ca3af' }}>
+                  Kolommen aanpassen? Ga naar <strong>Instellingen → Excel Export</strong>.
+                </p>
+              </div>
+
+              <button
+                onClick={exportToXLS}
+                disabled={exportPreviewCount === 0}
+                style={{
+                  width: '100%', padding: '12px', borderRadius: 10, border: 'none', fontSize: 15, fontWeight: 700, cursor: exportPreviewCount === 0 ? 'not-allowed' : 'pointer',
+                  background: exportPreviewCount === 0 ? '#e5e7eb' : '#16a34a', color: exportPreviewCount === 0 ? '#9ca3af' : '#fff',
+                  transition: 'background .15s',
+                }}
+              >
+                ↓ Download Excel ({exportPreviewCount} rijen)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {message && (
         <div style={{ marginTop: 14, padding: '10px 16px', borderRadius: 10, background: messageType === 'error' ? '#fef2f2' : '#f0fdf4', border: `1px solid ${messageType === 'error' ? '#fecaca' : '#bbf7d0'}`, color: messageType === 'error' ? '#dc2626' : '#16a34a', fontSize: 14 }}>
           {message}
@@ -1421,7 +1664,7 @@ const PAGE_DATE_PLACEHOLDERS: PlaceholderDef[] = [
   { key: 'tour_date',      label: 'Tourdatum',           example: 'Zaterdag 24 mei' },
 ]
 
-type SettingsSection = 'algemeen' | 'emails' | 'paginas' | 'geavanceerd'
+type SettingsSection = 'algemeen' | 'emails' | 'paginas' | 'export' | 'geavanceerd'
 
 function SettingsPanel({ password }: { password: string }) {
   const [loading, setLoading] = useState(false)
@@ -1480,6 +1723,11 @@ function SettingsPanel({ password }: { password: string }) {
   // ── Geavanceerd ──
   const [bookingFormFields, setBookingFormFields] = useState('')
 
+  // ── Export ──
+  const [exportColumns, setExportColumns] = useState<ExportColumn[]>(DEFAULT_EXPORT_COLUMNS)
+  const [exportDragIdx, setExportDragIdx] = useState<number | null>(null)
+  const [exportDragOverIdx, setExportDragOverIdx] = useState<number | null>(null)
+
   // Stored full settings (to merge on save)
   const [allSettings, setAllSettings] = useState<any>({})
 
@@ -1528,6 +1776,15 @@ function SettingsPanel({ password }: { password: string }) {
     setCopyNoSlots(s.copy_no_slots_text ?? 'Op {{date}} zijn we niet open, past enkel dan? Stel een moment voor en we kijken of het past!')
     // Geavanceerd
     setBookingFormFields(s.booking_form_fields ? JSON.stringify(s.booking_form_fields, null, 2) : '')
+    // Export
+    if (Array.isArray(s.export_columns) && s.export_columns.length > 0) {
+      // Merge saved columns with defaults (adds new columns if we ever add them)
+      const savedKeys = new Set(s.export_columns.map((c: ExportColumn) => c.key))
+      const newDefaults = DEFAULT_EXPORT_COLUMNS.filter(c => !savedKeys.has(c.key))
+      setExportColumns([...s.export_columns, ...newDefaults])
+    } else {
+      setExportColumns(DEFAULT_EXPORT_COLUMNS)
+    }
   }
 
   useEffect(() => { fetchSettings() }, [])
@@ -1556,6 +1813,8 @@ function SettingsPanel({ password }: { password: string }) {
         email_slot_taken_enabled: emailSlotTakenEnabled,
         email_slot_taken_subject: emailSlotTakenSubject,
         email_slot_taken_intro: emailSlotTakenIntro,
+        // Export
+        export_columns: exportColumns,
         // Pagina's
         copy_step1_subtitle: copyStep1,
         copy_step2_subtitle: copyStep2,
@@ -1591,6 +1850,7 @@ function SettingsPanel({ password }: { password: string }) {
     { id: 'algemeen', label: 'Algemeen', icon: '🏠' },
     { id: 'emails', label: 'E-mails', icon: '📧' },
     { id: 'paginas', label: "Pagina's & Formulier", icon: '📝' },
+    { id: 'export', label: 'Excel Export', icon: '📊' },
     { id: 'geavanceerd', label: 'Geavanceerd', icon: '⚙️' },
   ]
 
@@ -1813,6 +2073,88 @@ function SettingsPanel({ password }: { password: string }) {
               <textarea ref={refCopyNoSlots} value={copyNoSlots} onChange={e => setCopyNoSlots(e.target.value)} style={SF_TEXTAREA} rows={3} />
               <PlaceholderChips placeholders={PAGE_DATE_PLACEHOLDERS} targetRef={refCopyNoSlots} />
             </SettingsField>
+          </div>
+        )}
+
+        {/* ── EXPORT ── */}
+        {section === 'export' && (
+          <div>
+            <h2 style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 700 }}>Excel Export</h2>
+            <p style={{ margin: '0 0 20px', fontSize: 13, color: '#6b7280' }}>Kies welke kolommen in de Excel-export verschijnen en in welke volgorde. Sleep rijen om de volgorde aan te passen.</p>
+
+            <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
+              {/* Header */}
+              <div style={{ display: 'grid', gridTemplateColumns: '36px 1fr 180px 40px', gap: 0, padding: '8px 14px', background: '#f3f4f6', borderBottom: '1px solid #e5e7eb' }}>
+                <span />
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.05em' }}>Kolomnaam in Excel</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.05em' }}>Veld</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.05em', textAlign: 'center' }}>Aan</span>
+              </div>
+
+              {exportColumns.map((col, i) => (
+                <div
+                  key={col.key}
+                  draggable
+                  onDragStart={() => setExportDragIdx(i)}
+                  onDragOver={(e) => { e.preventDefault(); setExportDragOverIdx(i) }}
+                  onDrop={() => {
+                    if (exportDragIdx === null || exportDragIdx === i) return
+                    const cols = [...exportColumns]
+                    const [moved] = cols.splice(exportDragIdx, 1)
+                    cols.splice(i, 0, moved)
+                    setExportColumns(cols)
+                    setExportDragIdx(null)
+                    setExportDragOverIdx(null)
+                  }}
+                  onDragEnd={() => { setExportDragIdx(null); setExportDragOverIdx(null) }}
+                  style={{
+                    display: 'grid', gridTemplateColumns: '36px 1fr 180px 40px', gap: 0,
+                    padding: '7px 14px', borderBottom: '1px solid #f3f4f6',
+                    background: exportDragOverIdx === i ? '#e0f2fe' : exportDragIdx === i ? '#f0f9ff' : '#fff',
+                    opacity: exportDragIdx === i ? 0.5 : 1,
+                    cursor: 'grab', alignItems: 'center', transition: 'background .1s',
+                  }}
+                >
+                  <span style={{ color: '#d1d5db', fontSize: 16, cursor: 'grab', userSelect: 'none' }}>⠿</span>
+                  <input
+                    value={col.label}
+                    onChange={(e) => {
+                      const cols = [...exportColumns]
+                      cols[i] = { ...cols[i], label: e.target.value }
+                      setExportColumns(cols)
+                    }}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    style={{ border: 'none', background: 'transparent', fontSize: 14, color: '#111827', padding: '2px 4px', borderRadius: 4, outline: 'none', width: '100%' }}
+                    onFocus={(e) => { e.currentTarget.style.background = '#f9fafb'; e.currentTarget.style.border = '1px solid #e5e7eb' }}
+                    onBlur={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.border = 'none' }}
+                  />
+                  <span style={{ fontSize: 12, color: '#9ca3af', fontFamily: 'monospace' }}>{col.key}</span>
+                  <div style={{ display: 'flex', justifyContent: 'center' }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const cols = [...exportColumns]
+                        cols[i] = { ...cols[i], enabled: !cols[i].enabled }
+                        setExportColumns(cols)
+                      }}
+                      style={{
+                        width: 36, height: 20, borderRadius: 10, border: 'none', cursor: 'pointer', padding: 0, position: 'relative',
+                        background: col.enabled ? 'var(--primary-color-600, #16a34a)' : '#d1d5db', transition: 'background .2s', flexShrink: 0,
+                      }}
+                    >
+                      <span style={{
+                        position: 'absolute', top: 2, left: col.enabled ? 18 : 2, width: 16, height: 16,
+                        borderRadius: 8, background: '#fff', transition: 'left .2s',
+                      }} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <p style={{ margin: '10px 0 0', fontSize: 12, color: '#9ca3af' }}>
+              Tip: klik op een kolomnaam om die te hernoemen. Sleep de ⠿ handle om de volgorde aan te passen.
+            </p>
           </div>
         )}
 

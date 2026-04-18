@@ -36,6 +36,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       if (typeof updates.total_people === 'number') patch.total_people = updates.total_people
       if (typeof updates.children_count === 'number') patch.children_count = updates.children_count
       if (updates.penguin_feeding_count === null || typeof updates.penguin_feeding_count === 'number') patch.penguin_feeding_count = updates.penguin_feeding_count
+      if (updates.visitor_message === null || typeof updates.visitor_message === 'string') patch.visitor_message = updates.visitor_message
       if (updates.worker_message === null || typeof updates.worker_message === 'string') patch.worker_message = updates.worker_message
     }
 
@@ -63,6 +64,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       (patch.tour_date !== undefined && patch.tour_date !== currentBooking.tour_date) ||
       (patch.tour_time !== undefined && patch.tour_time !== currentBooking.tour_time)
     )
+    const nameChanged = currentBooking &&
+      patch.visitor_name !== undefined &&
+      patch.visitor_name !== currentBooking.visitor_name
 
     if (isNowApproved && !existingEventId) {
       // Approved and no calendar event yet → create one.
@@ -71,8 +75,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       if (eventId) {
         await supabaseAdmin.from('bookings').update({ calendar_event_id: eventId }).eq('id', params.id)
       }
-    } else if (wasApproved && isNowApproved && dateOrTimeChanged && existingEventId) {
-      // Still approved but date/time changed → update calendar event
+    } else if (wasApproved && isNowApproved && (dateOrTimeChanged || nameChanged) && existingEventId) {
+      // Still approved but date/time or name changed → update calendar event
       await updateBookingEvent(updated as any, existingEventId)
     } else if (wasApproved && !isNowApproved && existingEventId) {
       // Was approved, now denied/pending → delete calendar event

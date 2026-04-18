@@ -41,6 +41,8 @@ function AdminPageInner() {
   const [authenticated, setAuthenticated] = useState(false)
   const [clientEmail, setClientEmail] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>('dashboard')
+  const [headerScrolled, setHeaderScrolled] = useState(false)
+  const mainRef = useRef<HTMLElement>(null)
 
   const [workers, setWorkers] = useState<Worker[]>([])
   const [loadingWorkers, setLoadingWorkers] = useState(false)
@@ -98,6 +100,14 @@ function AdminPageInner() {
   }
 
   useEffect(() => { if (authenticated) fetchWorkers() }, [authenticated])
+
+  useEffect(() => {
+    const el = mainRef.current
+    if (!el) return
+    const onScroll = () => setHeaderScrolled(el.scrollTop > 24)
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => el.removeEventListener('scroll', onScroll)
+  }, [authenticated])
 
   // ── Login screen ──────────────────────────────────────────────────────────────
   if (!authenticated) {
@@ -197,10 +207,23 @@ function AdminPageInner() {
       </aside>
 
       {/* Main */}
-      <main style={{ flex: 1, overflow: 'auto' }}>
-        {/* Header */}
-        <div style={{ padding: '22px 32px', borderBottom: '1px solid #e5e7eb', background: '#fff' }}>
-          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#111827' }}>{pageTitle}</h1>
+      <main ref={mainRef} style={{ flex: 1, overflow: 'auto' }}>
+        {/* Header — sticky, collapses on scroll */}
+        <div style={{
+          position: 'sticky', top: 0, zIndex: 10,
+          padding: headerScrolled ? '10px 32px' : '22px 32px',
+          borderBottom: '1px solid #e5e7eb',
+          background: '#fff',
+          transition: 'padding .2s ease, box-shadow .2s ease',
+          boxShadow: headerScrolled ? '0 1px 8px rgba(0,0,0,.06)' : 'none',
+        }}>
+          <h1 style={{
+            margin: 0,
+            fontSize: headerScrolled ? 16 : 22,
+            fontWeight: 800,
+            color: '#111827',
+            transition: 'font-size .2s ease',
+          }}>{pageTitle}</h1>
         </div>
 
         {/* Content */}
@@ -924,7 +947,7 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
     setFormPenguinFeeding(booking.penguin_feeding_count != null ? Number(booking.penguin_feeding_count) : '')
     setFormWorkerMessage(booking.worker_message || '')
     setFormVisitorMessage(booking.visitor_message || '')
-    setNotifyVisitor(true)
+    setNotifyVisitor(false)
     setModalOpen(true)
   }
 
@@ -966,6 +989,7 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
           total_people: adults + children,
           children_count: children,
           penguin_feeding_count: formPenguinFeeding === '' ? null : Number(formPenguinFeeding),
+          visitor_message: formVisitorMessage || null,
           worker_message: formWorkerMessage || null,
         },
         notify: notifyVisitor,
@@ -1342,31 +1366,46 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
             </tr>
           </thead>
           <tbody>
-            {filteredBookings.map((b) => {
+            {filteredBookings.map((b, idx) => {
               const isPast = b.tour_date < todayStr
+              const thisMonth = b.tour_date.slice(0, 7)
+              const prevMonth = filteredBookings[idx - 1]?.tour_date.slice(0, 7)
+              const showMonthSep = thisMonth !== prevMonth
+              const monthLabel = new Intl.DateTimeFormat('nl-BE', { month: 'long', year: 'numeric' }).format(new Date(`${b.tour_date}T00:00:00`))
               return (
-                <tr key={b.id} style={{ opacity: isPast ? 0.55 : 1 }}>
-                  <td style={{ padding: '13px 12px', borderBottom: '1px solid #f3f4f6' }}>{formatNlDate(b.tour_date)}</td>
-                  <td style={{ padding: '13px 12px', borderBottom: '1px solid #f3f4f6', fontWeight: 600 }}>{b.tour_time}</td>
-                  <td style={{ padding: '13px 12px', borderBottom: '1px solid #f3f4f6' }}>
-                    <div style={{ fontWeight: 500 }}>{b.visitor_name}</div>
-                    <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 1 }}>{b.visitor_email}</div>
-                  </td>
-                  <td style={{ padding: '13px 12px', borderBottom: '1px solid #f3f4f6', fontSize: 13 }}>
-                    <span title="volwassenen">{b.total_people - (b.children_count ?? 0)}v</span>{' + '}
-                    <span title="kinderen">{b.children_count ?? 0}k</span>{' = '}
-                    <strong>{b.total_people}</strong>
-                  </td>
-                  <td style={{ padding: '13px 12px', borderBottom: '1px solid #f3f4f6' }}>
-                    <span style={{ ...statusStyle(b.status), display: 'inline-block', borderRadius: 999, padding: '4px 12px', fontWeight: 600, fontSize: 12 }}>
-                      {b.status === 'pending' ? 'Afwachtend' : b.status === 'approved' ? 'Geaccepteerd' : 'Geweigerd'}
-                    </span>
-                  </td>
-                  <td style={{ padding: '13px 12px', borderBottom: '1px solid #f3f4f6', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                    <button onClick={() => window.open(`/booking/${b.edit_token}`, '_blank')} style={{ marginRight: 6, background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 17, color: '#9ca3af' }} title="Bekijk boeking">👁</button>
-                    <button onClick={() => openModalFor(b)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 17, color: '#9ca3af' }} title="Bewerk boeking">✎</button>
-                  </td>
-                </tr>
+                <React.Fragment key={b.id}>
+                  {showMonthSep && (
+                    <tr>
+                      <td colSpan={6} style={{ padding: '14px 12px 6px', borderBottom: '1px solid #f3f4f6' }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.08em' }}>
+                          — {monthLabel} —
+                        </span>
+                      </td>
+                    </tr>
+                  )}
+                  <tr style={{ opacity: isPast ? 0.55 : 1 }}>
+                    <td style={{ padding: '13px 12px', borderBottom: '1px solid #f3f4f6' }}>{formatNlDate(b.tour_date)}</td>
+                    <td style={{ padding: '13px 12px', borderBottom: '1px solid #f3f4f6', fontWeight: 600 }}>{b.tour_time}</td>
+                    <td style={{ padding: '13px 12px', borderBottom: '1px solid #f3f4f6' }}>
+                      <div style={{ fontWeight: 500 }}>{b.visitor_name}</div>
+                      <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 1 }}>{b.visitor_email}</div>
+                    </td>
+                    <td style={{ padding: '13px 12px', borderBottom: '1px solid #f3f4f6', fontSize: 13 }}>
+                      <span title="volwassenen">{b.total_people - (b.children_count ?? 0)}v</span>{' + '}
+                      <span title="kinderen">{b.children_count ?? 0}k</span>{' = '}
+                      <strong>{b.total_people}</strong>
+                    </td>
+                    <td style={{ padding: '13px 12px', borderBottom: '1px solid #f3f4f6' }}>
+                      <span style={{ ...statusStyle(b.status), display: 'inline-block', borderRadius: 999, padding: '4px 12px', fontWeight: 600, fontSize: 12 }}>
+                        {b.status === 'pending' ? 'Afwachtend' : b.status === 'approved' ? 'Geaccepteerd' : 'Geweigerd'}
+                      </span>
+                    </td>
+                    <td style={{ padding: '13px 12px', borderBottom: '1px solid #f3f4f6', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      <button onClick={() => window.open(`/booking/${b.edit_token}`, '_blank')} style={{ marginRight: 6, background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 17, color: '#9ca3af' }} title="Bekijk boeking">👁</button>
+                      <button onClick={() => openModalFor(b)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 17, color: '#9ca3af' }} title="Bewerk boeking">✎</button>
+                    </td>
+                  </tr>
+                </React.Fragment>
               )
             })}
           </tbody>
@@ -1414,12 +1453,10 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
                     <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Telefoonnummer</span>
                     <input value={formPhone} onChange={(e) => setFormPhone(e.target.value)} style={{ display: 'block', marginTop: 5, width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #d1d5db', fontSize: 14, boxSizing: 'border-box' }} />
                   </label>
-                  {formVisitorMessage && (
-                    <div style={{ marginTop: 16 }}>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Opmerking bezoeker</span>
-                      <p style={{ margin: '6px 0 0', padding: '9px 12px', borderRadius: 10, background: '#f9fafb', border: '1px solid #e5e7eb', fontSize: 14, color: '#374151' }}>{formVisitorMessage}</p>
-                    </div>
-                  )}
+                  <label style={{ display: 'block', marginTop: 16 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Opmerking bezoeker</span>
+                    <textarea value={formVisitorMessage} onChange={(e) => setFormVisitorMessage(e.target.value)} rows={3} style={{ display: 'block', marginTop: 5, width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #d1d5db', fontSize: 14, resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+                  </label>
                 </div>
 
                 {/* Right: Boekingsgegevens */}
@@ -1481,10 +1518,6 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
                     <textarea value={formWorkerMessage} onChange={(e) => setFormWorkerMessage(e.target.value)} rows={3} style={{ display: 'block', marginTop: 5, width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #d1d5db', fontSize: 14, resize: 'vertical', boxSizing: 'border-box' }} />
                   </label>
 
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, cursor: 'pointer' }}>
-                    <input type="checkbox" checked={notifyVisitor} onChange={(e) => setNotifyVisitor(e.target.checked)} />
-                    <span style={{ fontSize: 14, color: '#374151' }}>E-mail klant over wijziging</span>
-                  </label>
                 </div>
               </div>
             </div>
@@ -1512,7 +1545,11 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
                   {addingToCalendar ? 'Toevoegen…' : formStatus !== 'approved' ? '📅 Zet in agenda ⚠️' : '📅 Zet in agenda'}
                 </button>
               </div>
-              <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13, color: '#6b7280', userSelect: 'none' }}>
+                  <input type="checkbox" checked={notifyVisitor} onChange={(e) => setNotifyVisitor(e.target.checked)} style={{ width: 14, height: 14 }} />
+                  E-mail sturen
+                </label>
                 <button
                   onClick={closeModal}
                   style={{ padding: '9px 16px', borderRadius: 10, border: '1px solid #e5e7eb', background: '#fff', color: '#374151', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}

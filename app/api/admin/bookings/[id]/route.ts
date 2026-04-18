@@ -60,23 +60,15 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     const isNowApproved = updated.status === 'approved'
     const existingEventId: string | null = (updated.calendar_event_id ?? currentBooking?.calendar_event_id) ?? null
 
-    const dateOrTimeChanged = currentBooking && (
-      (patch.tour_date !== undefined && patch.tour_date !== currentBooking.tour_date) ||
-      (patch.tour_time !== undefined && patch.tour_time !== currentBooking.tour_time)
-    )
-    const nameChanged = currentBooking &&
-      patch.visitor_name !== undefined &&
-      patch.visitor_name !== currentBooking.visitor_name
-
     if (isNowApproved && !existingEventId) {
       // Approved and no calendar event yet → create one.
-      // This covers: newly approved, re-approved after failure, or missed on a previous save.
+      // Covers: newly approved, re-approved after failure, or missed on a previous save.
       const eventId = await createBookingEvent(updated as any)
       if (eventId) {
         await supabaseAdmin.from('bookings').update({ calendar_event_id: eventId }).eq('id', params.id)
       }
-    } else if (wasApproved && isNowApproved && (dateOrTimeChanged || nameChanged) && existingEventId) {
-      // Still approved but date/time or name changed → update calendar event
+    } else if (wasApproved && isNowApproved && existingEventId) {
+      // Still approved and event exists → always sync any changes to the calendar
       await updateBookingEvent(updated as any, existingEventId)
     } else if (wasApproved && !isNowApproved && existingEventId) {
       // Was approved, now denied/pending → delete calendar event

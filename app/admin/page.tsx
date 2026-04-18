@@ -41,8 +41,6 @@ function AdminPageInner() {
   const [authenticated, setAuthenticated] = useState(false)
   const [clientEmail, setClientEmail] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>('dashboard')
-  const [headerScrolled, setHeaderScrolled] = useState(false)
-  const mainRef = useRef<HTMLElement>(null)
 
   const [workers, setWorkers] = useState<Worker[]>([])
   const [loadingWorkers, setLoadingWorkers] = useState(false)
@@ -100,14 +98,6 @@ function AdminPageInner() {
   }
 
   useEffect(() => { if (authenticated) fetchWorkers() }, [authenticated])
-
-  useEffect(() => {
-    const el = mainRef.current
-    if (!el) return
-    const onScroll = () => setHeaderScrolled(el.scrollTop > 24)
-    el.addEventListener('scroll', onScroll, { passive: true })
-    return () => el.removeEventListener('scroll', onScroll)
-  }, [authenticated])
 
   // ── Login screen ──────────────────────────────────────────────────────────────
   if (!authenticated) {
@@ -207,23 +197,10 @@ function AdminPageInner() {
       </aside>
 
       {/* Main — the only scroll container */}
-      <main ref={mainRef} style={{ flex: 1, height: '100vh', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
-        {/* Header — sticky inside the main scroll container */}
-        <div style={{
-          position: 'sticky', top: 0, zIndex: 10, flexShrink: 0,
-          padding: headerScrolled ? '10px 32px' : '22px 32px',
-          borderBottom: '1px solid #e5e7eb',
-          background: '#fff',
-          transition: 'padding .2s ease, box-shadow .2s ease',
-          boxShadow: headerScrolled ? '0 1px 8px rgba(0,0,0,.06)' : 'none',
-        }}>
-          <h1 style={{
-            margin: 0,
-            fontSize: headerScrolled ? 16 : 22,
-            fontWeight: 800,
-            color: '#111827',
-            transition: 'font-size .2s ease',
-          }}>{pageTitle}</h1>
+      <main style={{ flex: 1, height: '100vh', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+        {/* Page title — scrolls away normally */}
+        <div style={{ padding: '22px 32px', borderBottom: '1px solid #e5e7eb', background: '#fff', flexShrink: 0 }}>
+          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#111827' }}>{pageTitle}</h1>
         </div>
 
         {/* Content */}
@@ -1271,31 +1248,38 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
 
   return (
     <div>
-      {/* ── Actie-balk ── */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 10, alignItems: 'center' }}>
-        <input
-          type="search"
-          placeholder="🔍  Zoek op naam, e-mail, telefoon of datum…"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          style={{ flex: 1, padding: '9px 14px', borderRadius: 10, border: '1px solid #d1d5db', fontSize: 14, outline: 'none', minWidth: 0 }}
-        />
-        <button
-          onClick={openCreateModal}
-          style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 16px', borderRadius: 10, border: 'none', background: '#111827', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}
-        >
-          + Nieuwe boeking
-        </button>
-        <button
-          onClick={() => setExportOpen(true)}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 14px', borderRadius: 10, border: '1px solid #d1d5db', background: '#fff', fontSize: 13, fontWeight: 600, color: '#374151', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}
-        >
-          📊 Exporteren
-        </button>
-      </div>
+      {/* ── Sticky toolbar (actie + filters) ── */}
+      <div style={{
+        position: 'sticky', top: 0, zIndex: 10,
+        background: '#f8fafc',
+        marginBottom: 4,
+        paddingBottom: 12,
+      }}>
+        {/* Actie-balk */}
+        <div style={{ display: 'flex', gap: 10, marginBottom: 10, alignItems: 'center' }}>
+          <input
+            type="search"
+            placeholder="🔍  Zoek op naam, e-mail, telefoon of datum…"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{ flex: 1, padding: '9px 14px', borderRadius: 10, border: '1px solid #d1d5db', fontSize: 14, outline: 'none', minWidth: 0 }}
+          />
+          <button
+            onClick={openCreateModal}
+            style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 16px', borderRadius: 10, border: 'none', background: '#111827', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}
+          >
+            + Nieuwe boeking
+          </button>
+          <button
+            onClick={() => setExportOpen(true)}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 14px', borderRadius: 10, border: '1px solid #d1d5db', background: '#fff', fontSize: 13, fontWeight: 600, color: '#374151', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}
+          >
+            📊 Exporteren
+          </button>
+        </div>
 
-      {/* ── Filter-balk ── */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap', padding: '10px 14px', background: '#f9fafb', borderRadius: 10, border: '1px solid #f3f4f6' }}>
+        {/* Filter-balk */}
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', padding: '10px 14px', background: '#f0f1f3', borderRadius: 10, border: '1px solid #e5e7eb' }}>
         {/* Status filter */}
         <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
           {([
@@ -1346,6 +1330,7 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
           {filteredBookings.length} resultaat{filteredBookings.length !== 1 ? 'en' : ''}
         </span>
       </div>
+      </div>{/* end sticky toolbar */}
 
       {loading ? (
         <div style={{ padding: '48px 0', textAlign: 'center', color: '#9ca3af' }}>Laden…</div>

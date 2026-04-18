@@ -829,6 +829,7 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
   const [createStatus, setCreateStatus] = useState('approved')
   const [createNotify, setCreateNotify] = useState(false)
   const [createAddCal, setCreateAddCal] = useState(true)
+  const [createPenguinFeeding, setCreatePenguinFeeding] = useState<number | ''>('')
 
   const [formStatus, setFormStatus] = useState('pending')
   const [formDate, setFormDate] = useState('')
@@ -838,6 +839,7 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
   const [formPhone, setFormPhone] = useState('')
   const [formAdults, setFormAdults] = useState(1)
   const [formChildren, setFormChildren] = useState(0)
+  const [formPenguinFeeding, setFormPenguinFeeding] = useState<number | ''>('')
   const [formWorkerMessage, setFormWorkerMessage] = useState('')
   const [formVisitorMessage, setFormVisitorMessage] = useState('')
 
@@ -919,6 +921,7 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
     const total = Number(booking.total_people || 1)
     setFormAdults(Math.max(1, total - children))
     setFormChildren(children)
+    setFormPenguinFeeding(booking.penguin_feeding_count != null ? Number(booking.penguin_feeding_count) : '')
     setFormWorkerMessage(booking.worker_message || '')
     setFormVisitorMessage(booking.visitor_message || '')
     setNotifyVisitor(true)
@@ -962,6 +965,7 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
           visitor_phone: formPhone,
           total_people: adults + children,
           children_count: children,
+          penguin_feeding_count: formPenguinFeeding === '' ? null : Number(formPenguinFeeding),
           worker_message: formWorkerMessage || null,
         },
         notify: notifyVisitor,
@@ -1158,8 +1162,9 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
     // Pre-fill date with today
     setCreateDate(new Date().toISOString().slice(0, 10))
     setCreateTime('')
-    setCreateAdults(1)
+    setCreateAdults(0)
     setCreateChildren(0)
+    setCreatePenguinFeeding('')
     setCreateName('')
     setCreateEmail('')
     setCreatePhone('')
@@ -1187,6 +1192,7 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
           tour_time: createTime,
           adults: createAdults,
           children_count: createChildren,
+          penguin_feeding_count: createPenguinFeeding === '' ? null : Number(createPenguinFeeding),
           visitor_name: createName,
           visitor_email: createEmail,
           visitor_phone: createPhone,
@@ -1455,6 +1461,22 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
                   </p>
 
                   <label style={{ display: 'block', marginTop: 14 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
+                      🐧 Pinguïns voeren
+                      <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 500, color: '#fff', background: '#6366f1', borderRadius: 4, padding: '1px 6px' }}>intern</span>
+                    </span>
+                    <input
+                      type="number"
+                      min={0}
+                      placeholder="— onbekend"
+                      value={formPenguinFeeding}
+                      onChange={(e) => setFormPenguinFeeding(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                      style={{ display: 'block', marginTop: 5, width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #a5b4fc', fontSize: 14, boxSizing: 'border-box', background: '#f5f3ff' }}
+                    />
+                    <p style={{ margin: '4px 0 0', fontSize: 11, color: '#9ca3af' }}>Niet zichtbaar voor bezoekers — enkel intern beheer.</p>
+                  </label>
+
+                  <label style={{ display: 'block', marginTop: 14 }}>
                     <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Bericht aan bezoeker <span style={{ fontWeight: 400, color: '#9ca3af' }}>(optioneel)</span></span>
                     <textarea value={formWorkerMessage} onChange={(e) => setFormWorkerMessage(e.target.value)} rows={3} style={{ display: 'block', marginTop: 5, width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #d1d5db', fontSize: 14, resize: 'vertical', boxSizing: 'border-box' }} />
                   </label>
@@ -1665,9 +1687,10 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
                   <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Volwassenen (+12j)</span>
                   <input
                     type="number"
-                    min={1}
-                    value={createAdults}
-                    onChange={(e) => setCreateAdults(Math.max(1, Number(e.target.value || 1)))}
+                    min={0}
+                    placeholder="— onbekend"
+                    value={createAdults === 0 && createAdults !== undefined ? createAdults : createAdults}
+                    onChange={(e) => setCreateAdults(Math.max(0, Number(e.target.value || 0)))}
                     disabled={createSaving}
                     style={{ display: 'block', marginTop: 5, width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #d1d5db', fontSize: 14, boxSizing: 'border-box' }}
                   />
@@ -1684,9 +1707,26 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
                   />
                 </label>
               </div>
-              <p style={{ margin: '0 0 20px', fontSize: 13, color: '#6b7280' }}>
-                Totaal: <strong style={{ color: '#111827' }}>{createAdults + createChildren} personen</strong>
+              <p style={{ margin: '0 0 12px', fontSize: 13, color: '#6b7280' }}>
+                Totaal: <strong style={{ color: '#111827' }}>{(createAdults || 0) + createChildren} personen</strong>
               </p>
+
+              <label style={{ display: 'block', marginBottom: 20 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
+                  🐧 Pinguïns voeren
+                  <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 500, color: '#fff', background: '#6366f1', borderRadius: 4, padding: '1px 6px' }}>intern</span>
+                </span>
+                <input
+                  type="number"
+                  min={0}
+                  placeholder="— onbekend / leeg laten"
+                  value={createPenguinFeeding}
+                  onChange={(e) => setCreatePenguinFeeding(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                  disabled={createSaving}
+                  style={{ display: 'block', marginTop: 5, width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #a5b4fc', fontSize: 14, boxSizing: 'border-box', background: '#f5f3ff' }}
+                />
+                <p style={{ margin: '4px 0 0', fontSize: 11, color: '#9ca3af' }}>Niet zichtbaar voor bezoekers — enkel intern beheer.</p>
+              </label>
 
               {/* Status */}
               <div style={{ marginBottom: 20 }}>

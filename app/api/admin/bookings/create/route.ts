@@ -26,6 +26,7 @@ export async function POST(req: Request) {
       tour_time,
       adults,
       children_count = 0,
+      penguin_feeding_count = null,
       visitor_name = '',
       visitor_email = '',
       visitor_phone = '',
@@ -43,9 +44,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, message: 'Datum en tijdslot zijn verplicht' }, { status: 400 })
     }
 
-    const adultsNum   = Math.max(1, Number(adults) || 1)
+    const adultsNum   = Math.max(0, Number(adults) || 0)
     const childrenNum = Math.max(0, Number(children_count) || 0)
     const total_people = adultsNum + childrenNum
+    const penguinNum  = penguin_feeding_count != null && penguin_feeding_count !== '' ? Math.max(0, Number(penguin_feeding_count)) : null
 
     // Insert booking
     const { data: booking, error } = await supabaseAdmin
@@ -55,6 +57,7 @@ export async function POST(req: Request) {
         tour_time,
         total_people,
         children_count: childrenNum,
+        penguin_feeding_count: penguinNum,
         visitor_name:    visitor_name.trim()    || 'Onbekend',
         visitor_email:   visitor_email.trim()   || '',
         visitor_phone:   visitor_phone.trim()   || '',

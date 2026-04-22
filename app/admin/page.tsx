@@ -287,8 +287,19 @@ function DashboardPanel({ password, onNavigate }: { password: string; onNavigate
   const [finalizeSubject, setFinalizeSubject] = useState('')
   const [finalizeBody, setFinalizeBody] = useState('')
   const [finalizing, setFinalizing] = useState(false)
+  const [savingFinStep1, setSavingFinStep1] = useState(false)
   const [defaultFinalizedSubject, setDefaultFinalizedSubject] = useState('')
   const [defaultFinalizedBody, setDefaultFinalizedBody] = useState('')
+  // Finalize step-1 editable form fields
+  const [finFormDate, setFinFormDate] = useState('')
+  const [finFormTime, setFinFormTime] = useState('')
+  const [finFormName, setFinFormName] = useState('')
+  const [finFormEmail, setFinFormEmail] = useState('')
+  const [finFormPhone, setFinFormPhone] = useState('')
+  const [finFormAdults, setFinFormAdults] = useState(0)
+  const [finFormChildren, setFinFormChildren] = useState(0)
+  const [finFormWorkerMessage, setFinFormWorkerMessage] = useState('')
+  const [finFormVisitorMessage, setFinFormVisitorMessage] = useState('')
 
   // Load default approve message + finalized email defaults from settings once
   useEffect(() => {
@@ -327,13 +338,89 @@ function DashboardPanel({ password, onNavigate }: { password: string; onNavigate
 
   useEffect(() => { fetchBookings() }, [])
 
-  function openFinalizeModal(b: any) {
+  function fillFinalizeVars(template: string, b: any): string {
+    const adults = (b.total_people || 0) - (b.children_count || 0)
+    const vars: Record<string, string> = {
+      visitor_name:   b.visitor_name  || '',
+      visitor_email:  b.visitor_email || '',
+      visitor_phone:  b.visitor_phone || '',
+      tour_date:      b.tour_date     || '',
+      tour_time:      b.tour_time     || '',
+      total_people:   String(b.total_people   || 0),
+      adults_count:   String(adults),
+      children_count: String(b.children_count || 0),
+    }
+    return template.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? `{{${key}}}`)
+  }
+
+  async function openFinalizeModal(b: any) {
+    // Populate editable form fields
+    const children = Number(b.children_count || 0)
+    const total    = Number(b.total_people   || 0)
+    setFinFormDate(b.tour_date      || '')
+    setFinFormTime(b.tour_time      || '')
+    setFinFormName(b.visitor_name   || '')
+    setFinFormEmail(b.visitor_email || '')
+    setFinFormPhone(b.visitor_phone || '')
+    setFinFormAdults(Math.max(0, total - children))
+    setFinFormChildren(children)
+    setFinFormWorkerMessage(b.worker_message  || '')
+    setFinFormVisitorMessage(b.visitor_message || '')
+
     setFinalizeBooking(b)
     setFinalizeStep(1)
     setFinalizeNotify(!!b.visitor_email)
-    setFinalizeSubject(defaultFinalizedSubject || `Bedankt voor jullie bezoek! – ${b.tour_date}`)
-    setFinalizeBody(defaultFinalizedBody || `Bedankt voor jullie bezoek aan Bird Palace op ${b.tour_date}. We hopen dat jullie het fantastisch hebben gehad!`)
     setFinalizing(false)
+    setSavingFinStep1(false)
+
+    // Fetch fresh settings and pre-fill placeholders
+    try {
+      const res = await fetch('/api/settings')
+      const data = await res.json()
+      const s = data.settings ?? {}
+      const rawSubject = s.email_finalized_subject || `Bedankt voor jullie bezoek! – {{tour_date}}`
+      const rawBody    = s.email_finalized_intro   || `Bedankt voor jullie bezoek aan Bird Palace op {{tour_date}}. We hopen dat jullie het fantastisch hebben gehad!`
+      setFinalizeSubject(fillFinalizeVars(rawSubject, b))
+      setFinalizeBody(fillFinalizeVars(rawBody, b))
+    } catch {
+      setFinalizeSubject(`Bedankt voor jullie bezoek! – ${b.tour_date}`)
+      setFinalizeBody(`Bedankt voor jullie bezoek aan Bird Palace op ${b.tour_date}. We hopen dat jullie het fantastisch hebben gehad!`)
+    }
+  }
+
+  async function saveFinStep1AndNext() {
+    if (!finalizeBooking) return
+    setSavingFinStep1(true)
+    try {
+      const adults   = Number(finFormAdults   || 0)
+      const children = Number(finFormChildren || 0)
+      const res = await fetch(`/api/admin/bookings/${finalizeBooking.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          password,
+          updates: {
+            tour_date:       finFormDate,
+            tour_time:       finFormTime,
+            visitor_name:    finFormName,
+            visitor_email:   finFormEmail,
+            visitor_phone:   finFormPhone,
+            total_people:    adults + children,
+            children_count:  children,
+            worker_message:  finFormWorkerMessage  || null,
+            visitor_message: finFormVisitorMessage || null,
+          },
+          notify: false,
+        }),
+      })
+      const data = await res.json()
+      if (data.ok && data.booking) {
+        setFinalizeBooking(data.booking)
+        setFinalizeNotify(!!data.booking.visitor_email)
+      }
+    } catch { /* proceed anyway */ }
+    setSavingFinStep1(false)
+    setFinalizeStep(2)
   }
 
   async function doFinalizeBooking() {
@@ -611,34 +698,70 @@ function DashboardPanel({ password, onNavigate }: { password: string; onNavigate
             >×</button>
           </div>
 
-          {/* Step 1: Booking details */}
+          {/* Step 1: Editable booking details */}
           {finalizeStep === 1 && (
             <>
-              <div style={{ padding: '20px 24px' }}>
-                <div style={{ background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 12, padding: '16px 18px' }}>
-                  <div style={{ fontWeight: 700, fontSize: 16, color: '#111827', marginBottom: 8 }}>{finalizeBooking.visitor_name}</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 0', fontSize: 14 }}>
-                    <span style={{ color: '#6b7280' }}>📅 Datum</span>
-                    <span style={{ fontWeight: 600 }}>{fmtDate(finalizeBooking.tour_date)}</span>
-                    <span style={{ color: '#6b7280' }}>🕐 Tijdslot</span>
-                    <span style={{ fontWeight: 600 }}>{finalizeBooking.tour_time}</span>
-                    <span style={{ color: '#6b7280' }}>👥 Personen</span>
-                    <span style={{ fontWeight: 600 }}>{finalizeBooking.total_people}</span>
-                    {finalizeBooking.visitor_email && (
-                      <>
-                        <span style={{ color: '#6b7280' }}>📧 E-mail</span>
-                        <span style={{ fontWeight: 600, fontSize: 13 }}>{finalizeBooking.visitor_email}</span>
-                      </>
-                    )}
+              <div style={{ overflowY: 'auto', padding: '20px 24px', maxHeight: 'calc(90vh - 180px)' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 28 }}>
+                  {/* Left: klantgegevens */}
+                  <div style={{ paddingRight: 20, borderRight: '1px solid #f3f4f6' }}>
+                    <p style={{ margin: '0 0 12px', fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.06em' }}>Klantgegevens</p>
+                    <label style={{ display: 'block', marginBottom: 10 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Naam</span>
+                      <input value={finFormName} onChange={e => setFinFormName(e.target.value)} style={{ display: 'block', marginTop: 4, width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 14, boxSizing: 'border-box' }} />
+                    </label>
+                    <label style={{ display: 'block', marginBottom: 10 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>E-mailadres</span>
+                      <input value={finFormEmail} onChange={e => setFinFormEmail(e.target.value)} style={{ display: 'block', marginTop: 4, width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 14, boxSizing: 'border-box' }} />
+                    </label>
+                    <label style={{ display: 'block', marginBottom: 10 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Telefoonnummer</span>
+                      <input value={finFormPhone} onChange={e => setFinFormPhone(e.target.value)} style={{ display: 'block', marginTop: 4, width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 14, boxSizing: 'border-box' }} />
+                    </label>
+                    <label style={{ display: 'block' }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Opmerking bezoeker</span>
+                      <textarea value={finFormVisitorMessage} onChange={e => setFinFormVisitorMessage(e.target.value)} rows={2} style={{ display: 'block', marginTop: 4, width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 14, resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+                    </label>
+                  </div>
+                  {/* Right: boekingsgegevens */}
+                  <div>
+                    <p style={{ margin: '0 0 12px', fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.06em' }}>Boekingsgegevens</p>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px', gap: 8, marginBottom: 10 }}>
+                      <label style={{ display: 'block' }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Datum</span>
+                        <input type="date" value={finFormDate} onChange={e => setFinFormDate(e.target.value)} style={{ display: 'block', marginTop: 4, width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 14, boxSizing: 'border-box' }} />
+                      </label>
+                      <label style={{ display: 'block' }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Tijdslot</span>
+                        <TimeInput value={finFormTime} onChange={setFinFormTime} style={{ display: 'block', marginTop: 4, width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 14, boxSizing: 'border-box' }} />
+                      </label>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 4 }}>
+                      <label style={{ display: 'block' }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Volwassenen</span>
+                        <input type="number" min={0} value={finFormAdults} onChange={e => setFinFormAdults(Math.max(0, Number(e.target.value || 0)))} style={{ display: 'block', marginTop: 4, width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 14, boxSizing: 'border-box' }} />
+                      </label>
+                      <label style={{ display: 'block' }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Kinderen</span>
+                        <input type="number" min={0} value={finFormChildren} onChange={e => setFinFormChildren(Math.max(0, Number(e.target.value || 0)))} style={{ display: 'block', marginTop: 4, width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 14, boxSizing: 'border-box' }} />
+                      </label>
+                    </div>
+                    <p style={{ margin: '4px 0 12px', fontSize: 13, color: '#6b7280' }}>
+                      Totaal: <strong style={{ color: '#111827' }}>{finFormAdults + finFormChildren} personen</strong>
+                    </p>
+                    <label style={{ display: 'block' }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Bericht aan bezoeker</span>
+                      <textarea value={finFormWorkerMessage} onChange={e => setFinFormWorkerMessage(e.target.value)} rows={2} style={{ display: 'block', marginTop: 4, width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 14, resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+                    </label>
                   </div>
                 </div>
-                <p style={{ margin: '16px 0 0', fontSize: 13, color: '#6b7280' }}>
-                  De boeking krijgt de status <strong style={{ color: '#4338ca' }}>Afgerond</strong> en wordt uit de Google Agenda verwijderd.
+                <p style={{ margin: '16px 0 0', fontSize: 12, color: '#9ca3af' }}>
+                  Na voltooien krijgt de boeking de status <strong style={{ color: '#4338ca' }}>Afgerond</strong>.
                 </p>
               </div>
               {/* Footer step 1 */}
-              <div style={{ padding: '14px 24px', borderTop: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ position: 'relative' }}>
+              <div style={{ padding: '14px 24px', borderTop: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+                <div>
                   <select
                     onChange={(e) => {
                       const v = e.target.value
@@ -656,8 +779,6 @@ function DashboardPanel({ password, onNavigate }: { password: string; onNavigate
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({ password, updates: { status: 'denied' }, notify: false }),
                         }).then(() => { setFinalizeBooking(null); fetchBookings(); setActionMsg('Boeking geweigerd.') }).catch(() => {})
-                      } else if (v === 'cancel') {
-                        setFinalizeBooking(null)
                       }
                       e.target.value = ''
                     }}
@@ -667,21 +788,27 @@ function DashboardPanel({ password, onNavigate }: { password: string; onNavigate
                     <option value="" disabled>🚫 Kwam niet opdagen</option>
                     <option value="denied">→ Markeer als geweigerd</option>
                     <option value="delete">→ Verwijder boeking</option>
-                    <option value="cancel">→ Annuleren</option>
                   </select>
                 </div>
                 <div style={{ display: 'flex', gap: 10 }}>
                   <button
                     onClick={() => setFinalizeBooking(null)}
+                    disabled={savingFinStep1}
                     style={{ padding: '9px 16px', borderRadius: 10, border: '1px solid #d1d5db', background: '#f9fafb', color: '#374151', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}
                   >
-                    Terug
+                    Annuleren
                   </button>
                   <button
-                    onClick={() => setFinalizeStep(2)}
-                    style={{ padding: '9px 24px', borderRadius: 10, border: 'none', background: '#6366f1', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}
+                    onClick={saveFinStep1AndNext}
+                    disabled={savingFinStep1}
+                    style={{ padding: '9px 24px', borderRadius: 10, border: 'none', background: '#6366f1', color: '#fff', fontWeight: 700, fontSize: 14, cursor: savingFinStep1 ? 'not-allowed' : 'pointer', opacity: savingFinStep1 ? 0.7 : 1, display: 'flex', alignItems: 'center', gap: 8 }}
                   >
-                    Volgende →
+                    {savingFinStep1 ? (
+                      <>
+                        <span style={{ width: 13, height: 13, border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.7s linear infinite' }} />
+                        Opslaan…
+                      </>
+                    ) : 'Volgende →'}
                   </button>
                 </div>
               </div>
@@ -2074,6 +2201,7 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
                   <option value="approved">Geaccepteerd</option>
                   <option value="pending">Afwachtend</option>
                   <option value="denied">Geweigerd</option>
+                  <option value="afgerond">Afgerond</option>
                 </select>
               </div>
 

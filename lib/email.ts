@@ -393,11 +393,6 @@ export async function sendBookingFinalizedEmail(
         <div style="font-family:sans-serif;max-width:560px;margin:0 auto;color:#1a1a1a">
           <h2 style="color:${brand}">Bedankt voor jullie bezoek! 🎉</h2>
           <p>${bodyHtml}</p>
-          <table style="width:100%;border-collapse:collapse;margin:24px 0">
-            <tr><td style="padding:8px 0;color:#666;width:160px">Datum</td><td style="padding:8px 0;font-weight:600">${formatDate(booking.tour_date)}</td></tr>
-            <tr><td style="padding:8px 0;color:#666">Tijdslot</td><td style="padding:8px 0;font-weight:600">${booking.tour_time}</td></tr>
-            ${peopleRows(booking)}
-          </table>
           <p style="margin-top:32px;color:#888;font-size:13px">Vragen? Mail ons op <a href="mailto:${contact}">${contact}</a></p>
         </div>
       `,

@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { sendBookingFinalizedEmail } from '@/lib/email'
-import { deleteBookingEvent } from '@/lib/googleCalendar'
 
 function getAdminPassword() {
   return process.env.ADMIN_PASSWORD ?? 'T.anja2001BirdPalace'
@@ -10,6 +9,7 @@ function getAdminPassword() {
 /**
  * POST /api/admin/bookings/[id]/finalize
  * Sets booking status to 'afgerond' and optionally sends a follow-up email to the visitor.
+ * Does NOT touch Google Calendar — the event stays so the admin can still see it.
  */
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   try {
@@ -41,16 +41,6 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
     if (updateError || !updated) {
       return NextResponse.json({ ok: false, message: updateError?.message || 'Update mislukt' }, { status: 500 })
-    }
-
-    // Remove from Google Calendar (tour is done)
-    if (booking.calendar_event_id) {
-      try {
-        await deleteBookingEvent(booking.calendar_event_id)
-        await supabaseAdmin.from('bookings').update({ calendar_event_id: null }).eq('id', params.id)
-      } catch (calErr) {
-        console.warn('[finalize] calendar delete failed (non-fatal)', calErr)
-      }
     }
 
     // Optionally send finalized email to visitor

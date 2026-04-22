@@ -21,14 +21,15 @@ const DEFAULT_EXPORT_COLUMNS: ExportColumn[] = [
 ]
 
 type Worker = { id: string; name: string; email: string; google_calendar_id: string; created_at?: string }
-type Tab = 'dashboard' | 'bookings' | 'workers' | 'calendar' | 'settings'
+type Tab = 'dashboard' | 'bookings' | 'stats' | 'workers' | 'calendar' | 'settings'
 
 const NAV_ITEMS: { id: Tab; label: string; icon: string; href?: string }[] = [
-  { id: 'dashboard', label: 'Dashboard', icon: '⊞' },
-  { id: 'bookings',  label: 'Boekingen',  icon: '📋' },
-  { id: 'workers',   label: 'Workers',    icon: '👥' },
-  { id: 'calendar',  label: 'Kalender',   icon: '📅' },
-  { id: 'settings',  label: 'Instellingen', icon: '⚙️' },
+  { id: 'dashboard', label: 'Dashboard',     icon: '⊞' },
+  { id: 'bookings',  label: 'Boekingen',     icon: '📋' },
+  { id: 'stats',     label: 'Statistieken',  icon: '📊' },
+  { id: 'workers',   label: 'Workers',       icon: '👥' },
+  { id: 'calendar',  label: 'Kalender',      icon: '📅' },
+  { id: 'settings',  label: 'Instellingen',  icon: '⚙️' },
   { id: 'settings',  label: 'Bekijk planning', icon: '🗓️', href: 'https://calendar.google.com/calendar/u/4/r/month' },
 ]
 
@@ -214,6 +215,8 @@ function AdminPageInner() {
               }}
             />
           )}
+
+          {tab === 'stats' && <StatsPanel password={password} />}
 
           {tab === 'bookings' && (
             <BookingsTable
@@ -3139,6 +3142,410 @@ function SettingsPanel({ password }: { password: string }) {
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+// ── Statistics Panel ──────────────────────────────────────────────────────────
+
+type StatsPeriod = 'month' | '3months' | 'year' | 'all' | 'custom'
+
+function StatsPanel({ password }: { password: string }) {
+  const [bookings, setBookings] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [period, setPeriod] = useState<StatsPeriod>('year')
+  const [customFrom, setCustomFrom] = useState('')
+  const [customTo, setCustomTo] = useState('')
+  const [visitorMetric, setVisitorMetric] = useState<'bookings' | 'visitors'>('visitors')
+
+  const today = new Date()
+  const todayStr = today.toISOString().slice(0, 10)
+
+  async function fetchAll() {
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/admin/bookings/list?password=${encodeURIComponent(password)}`)
+      if (!res.ok) throw new Error()
+      const data = await res.json()
+      setBookings(data.bookings ?? [])
+    } finally {
+      setLoading(false)
+    }
+  }
+  useEffect(() => { fetchAll() }, [])
+
+  // ── Period boundaries ──────────────────────────────────────────────────────
+  function getPeriodRange(): { from: string; to: string } {
+    const now = new Date()
+    const pad = (n: number) => String(n).padStart(2, '0')
+    if (period === 'month') {
+      const y = now.getFullYear(), m = now.getMonth()
+      return { from: `${y}-${pad(m + 1)}-01`, to: `${y}-${pad(m + 1)}-${pad(new Date(y, m + 1, 0).getDate())}` }
+    }
+    if (period === '3months') {
+      const d3 = new Date(now); d3.setMonth(d3.getMonth() - 3)
+      return { from: d3.toISOString().slice(0, 10), to: todayStr }
+    }
+    if (period === 'year') {
+      return { from: `${now.getFullYear()}-01-01`, to: `${now.getFullYear()}-12-31` }
+    }
+    if (period === 'custom') {
+      return { from: customFrom || '2000-01-01', to: customTo || todayStr }
+    }
+    return { from: '2000-01-01', to: '2099-12-31' }
+  }
+
+  const { from: pFrom, to: pTo } = getPeriodRange()
+
+  // ── Filtered set (only approved + afgerond for real visitor stats) ──────────
+  const inPeriod     = bookings.filter(b => b.tour_date >= pFrom && b.tour_date <= pTo)
+  const confirmed    = inPeriod.filter(b => b.status === 'approved' || b.status === 'afgerond')
+  const allStatuses  = inPeriod
+
+  // ── KPIs ──────────────────────────────────────────────────────────────────
+  const totalBookings     = allStatuses.length
+  const totalVisitors     = confirmed.reduce((s, b) => s + (b.total_people || 0), 0)
+  const totalAdults       = confirmed.reduce((s, b) => s + ((b.total_people || 0) - (b.children_count || 0)), 0)
+  const totalChildren     = confirmed.reduce((s, b) => s + (b.children_count || 0), 0)
+  const avgGroupSize      = confirmed.length > 0 ? (totalVisitors / confirmed.length) : 0
+  const penguinSessions   = confirmed.filter(b => b.penguin_feeding_count != null && b.penguin_feeding_count > 0).length
+  const totalPenguin      = confirmed.reduce((s, b) => s + (b.penguin_feeding_count || 0), 0)
+  const penguinPct        = confirmed.length > 0 ? Math.round((penguinSessions / confirmed.length) * 100) : 0
+  const approvedCount     = allStatuses.filter(b => b.status === 'approved' || b.status === 'afgerond').length
+  const pendingCount      = allStatuses.filter(b => b.status === 'pending').length
+  const deniedCount       = allStatuses.filter(b => b.status === 'denied').length
+  const afgerondCount     = allStatuses.filter(b => b.status === 'afgerond').length
+  const approvalRate      = totalBookings > 0 ? Math.round((approvedCount / totalBookings) * 100) : 0
+
+  // ── Lead time (days between created_at and tour_date) ─────────────────────
+  const leadTimes = confirmed
+    .filter(b => b.created_at)
+    .map(b => {
+      const diff = (new Date(b.tour_date).getTime() - new Date(b.created_at).getTime()) / 86400000
+      return Math.round(diff)
+    })
+    .filter(d => d >= 0)
+  const avgLeadTime = leadTimes.length > 0 ? Math.round(leadTimes.reduce((s, d) => s + d, 0) / leadTimes.length) : 0
+
+  // ── Bookings / visitors by month (last 13 months always, or within period) ─
+  function getMonthRange() {
+    const months: string[] = []
+    const start = new Date(pFrom + 'T00:00:00')
+    const end   = new Date(pTo   + 'T00:00:00')
+    start.setDate(1)
+    while (start <= end) {
+      months.push(`${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}`)
+      start.setMonth(start.getMonth() + 1)
+    }
+    return months.slice(-18) // max 18 months
+  }
+
+  const months = getMonthRange()
+  const monthData = months.map(m => ({
+    label: new Intl.DateTimeFormat('nl-BE', { month: 'short', year: months.length > 13 ? '2-digit' : undefined }).format(new Date(m + '-01T00:00:00')),
+    bookings: confirmed.filter(b => b.tour_date.startsWith(m)).length,
+    visitors: confirmed.filter(b => b.tour_date.startsWith(m)).reduce((s: number, b: any) => s + (b.total_people || 0), 0),
+  }))
+  const maxMonthVal = Math.max(...monthData.map(m => visitorMetric === 'visitors' ? m.visitors : m.bookings), 1)
+
+  // ── Weekday distribution ────────────────────────────────────────────────────
+  const DAY_NL = ['Zo', 'Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za']
+  const weekdayCounts = Array(7).fill(0)
+  confirmed.forEach(b => {
+    try { weekdayCounts[new Date(b.tour_date + 'T00:00:00').getDay()]++ } catch {}
+  })
+  const maxWeekday = Math.max(...weekdayCounts, 1)
+
+  // ── Time slot distribution ─────────────────────────────────────────────────
+  const timeSlotMap: Record<string, number> = {}
+  confirmed.forEach(b => {
+    if (b.tour_time) timeSlotMap[b.tour_time] = (timeSlotMap[b.tour_time] || 0) + 1
+  })
+  const timeSlots = Object.entries(timeSlotMap).sort((a, b) => a[0].localeCompare(b[0]))
+  const maxTimeSlot = Math.max(...Object.values(timeSlotMap), 1)
+
+  // ── Group size distribution ────────────────────────────────────────────────
+  const sizeBuckets = [
+    { label: '1–5',   min: 1, max: 5 },
+    { label: '6–10',  min: 6, max: 10 },
+    { label: '11–20', min: 11, max: 20 },
+    { label: '21–30', min: 21, max: 30 },
+    { label: '31+',   min: 31, max: 9999 },
+  ]
+  const sizeData = sizeBuckets.map(b => ({
+    label: b.label,
+    count: confirmed.filter(bk => (bk.total_people || 0) >= b.min && (bk.total_people || 0) <= b.max).length,
+  }))
+  const maxSizeBucket = Math.max(...sizeData.map(s => s.count), 1)
+
+  // ── Seasonal (per kwartaal) ────────────────────────────────────────────────
+  const quarterMap: Record<string, number> = {}
+  confirmed.forEach(b => {
+    const q = `${b.tour_date.slice(0, 4)} Q${Math.ceil((parseInt(b.tour_date.slice(5, 7))) / 3)}`
+    quarterMap[q] = (quarterMap[q] || 0) + 1
+  })
+  const quarters = Object.entries(quarterMap).sort((a, b) => a[0].localeCompare(b[0])).slice(-8)
+  const maxQuarter = Math.max(...quarters.map(q => q[1]), 1)
+
+  // ── Penguin % per month ───────────────────────────────────────────────────
+  const penguinMonthData = months.map(m => {
+    const mBookings = confirmed.filter(b => b.tour_date.startsWith(m))
+    const withPenguin = mBookings.filter(b => b.penguin_feeding_count != null && b.penguin_feeding_count > 0).length
+    return {
+      label: new Intl.DateTimeFormat('nl-BE', { month: 'short' }).format(new Date(m + '-01T00:00:00')),
+      pct: mBookings.length > 0 ? Math.round((withPenguin / mBookings.length) * 100) : 0,
+      count: withPenguin,
+    }
+  })
+
+  // ── Styles ────────────────────────────────────────────────────────────────
+  const cardStyle: React.CSSProperties = {
+    background: '#fff', border: '1px solid #e5e7eb', borderRadius: 14, padding: '20px 24px',
+  }
+  const sectionTitle: React.CSSProperties = {
+    margin: '0 0 16px', fontSize: 14, fontWeight: 700, color: '#111827',
+  }
+  const PERIODS: { key: StatsPeriod; label: string }[] = [
+    { key: 'month',    label: 'Deze maand' },
+    { key: '3months',  label: 'Laatste 3 maanden' },
+    { key: 'year',     label: 'Dit jaar' },
+    { key: 'all',      label: 'Alles' },
+    { key: 'custom',   label: 'Aangepast' },
+  ]
+
+  if (loading) return <div style={{ padding: '60px 0', textAlign: 'center', color: '#9ca3af', fontSize: 15 }}>Laden…</div>
+
+  return (
+    <div style={{ maxWidth: 1100 }}>
+      {/* Period selector */}
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 24, flexWrap: 'wrap' }}>
+        {PERIODS.map(p => (
+          <button
+            key={p.key}
+            onClick={() => setPeriod(p.key)}
+            style={{
+              padding: '7px 16px', borderRadius: 999, border: '1px solid', fontSize: 13, fontWeight: period === p.key ? 700 : 400, cursor: 'pointer',
+              background: period === p.key ? '#111827' : '#fff',
+              color:      period === p.key ? '#fff'    : '#6b7280',
+              borderColor: period === p.key ? '#111827' : '#d1d5db',
+            }}
+          >{p.label}</button>
+        ))}
+        {period === 'custom' && (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginLeft: 6 }}>
+            <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)}
+              style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13 }} />
+            <span style={{ color: '#9ca3af', fontSize: 13 }}>—</span>
+            <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)}
+              style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 13 }} />
+          </div>
+        )}
+        <span style={{ marginLeft: 'auto', fontSize: 12, color: '#9ca3af' }}>
+          {confirmed.length} bevestigde tours · {allStatuses.length} boekingen totaal
+        </span>
+      </div>
+
+      {/* KPI cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 20 }}>
+        {[
+          { label: 'Boekingen', value: totalBookings, sub: `${approvedCount} bevestigd`, color: '#6366f1', bg: '#eef2ff' },
+          { label: 'Bezoekers', value: totalVisitors, sub: `${totalAdults}v + ${totalChildren}k`, color: '#16a34a', bg: '#f0fdf4' },
+          { label: 'Gem. groep', value: avgGroupSize.toFixed(1), sub: `${confirmed.length} tours`, color: '#0ea5e9', bg: '#f0f9ff' },
+          { label: 'Pinguïns voeren', value: `${penguinPct}%`, sub: `${totalPenguin} deelnemers`, color: '#f59e0b', bg: '#fffbeb' },
+          { label: 'Goedgekeurd', value: `${approvalRate}%`, sub: `${deniedCount} geweigerd`, color: '#8b5cf6', bg: '#f5f3ff' },
+        ].map(({ label, value, sub, color, bg }) => (
+          <div key={label} style={{ ...cardStyle, background: bg, border: `1px solid ${color}22`, padding: '16px 18px' }}>
+            <div style={{ fontSize: 26, fontWeight: 800, color, lineHeight: 1 }}>{value}</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginTop: 5 }}>{label}</div>
+            <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>{sub}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Row 2: Boekingen/bezoekers per maand */}
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16, marginBottom: 16 }}>
+        <div style={cardStyle}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+            <h3 style={sectionTitle}>📅 Per maand</h3>
+            <div style={{ display: 'flex', gap: 4 }}>
+              {(['visitors', 'bookings'] as const).map(m => (
+                <button key={m} onClick={() => setVisitorMetric(m)}
+                  style={{ padding: '4px 12px', borderRadius: 999, border: '1px solid', fontSize: 12, cursor: 'pointer',
+                    fontWeight: visitorMetric === m ? 700 : 400,
+                    background: visitorMetric === m ? '#111827' : '#fff',
+                    color:      visitorMetric === m ? '#fff'    : '#6b7280',
+                    borderColor: visitorMetric === m ? '#111827' : '#d1d5db',
+                  }}>
+                  {m === 'visitors' ? 'Bezoekers' : 'Tours'}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 3, alignItems: 'flex-end', height: 140 }}>
+            {monthData.map((m, i) => {
+              const val = visitorMetric === 'visitors' ? m.visitors : m.bookings
+              const pct = maxMonthVal > 0 ? (val / maxMonthVal) * 100 : 0
+              const isCurrentMonth = months[i] === todayStr.slice(0, 7)
+              return (
+                <div key={m.label} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }} title={`${m.label}: ${val} ${visitorMetric === 'visitors' ? 'bezoekers' : 'tours'}`}>
+                  <div style={{ fontSize: 9, color: '#9ca3af', fontWeight: val > 0 ? 600 : 400 }}>{val > 0 ? val : ''}</div>
+                  <div style={{ width: '100%', height: `${Math.max(pct, val > 0 ? 4 : 0)}%`, background: isCurrentMonth ? '#6366f1' : '#6366f133', borderRadius: '3px 3px 0 0', transition: 'height .3s', minHeight: val > 0 ? 3 : 0 }} />
+                  <div style={{ fontSize: 9, color: isCurrentMonth ? '#6366f1' : '#9ca3af', fontWeight: isCurrentMonth ? 700 : 400, whiteSpace: 'nowrap' }}>{m.label}</div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Status verdeling */}
+        <div style={cardStyle}>
+          <h3 style={sectionTitle}>📋 Status verdeling</h3>
+          {[
+            { label: 'Goedgekeurd', count: approvedCount, color: '#16a34a', bg: '#f0fdf4' },
+            { label: 'Afwachtend',  count: pendingCount,  color: '#f59e0b', bg: '#fffbeb' },
+            { label: 'Geweigerd',   count: deniedCount,   color: '#dc2626', bg: '#fef2f2' },
+            { label: 'Afgerond',    count: afgerondCount, color: '#6366f1', bg: '#eef2ff' },
+          ].map(({ label, count, color, bg }) => (
+            <div key={label} style={{ marginBottom: 10 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}>
+                <span style={{ fontWeight: 500, color: '#374151' }}>{label}</span>
+                <span style={{ fontWeight: 700, color }}>{count} <span style={{ color: '#9ca3af', fontWeight: 400, fontSize: 11 }}>({totalBookings > 0 ? Math.round((count / totalBookings) * 100) : 0}%)</span></span>
+              </div>
+              <div style={{ height: 8, background: '#f3f4f6', borderRadius: 4 }}>
+                <div style={{ width: `${totalBookings > 0 ? (count / totalBookings) * 100 : 0}%`, height: '100%', background: color, borderRadius: 4, transition: 'width .4s', opacity: 0.8 }} />
+              </div>
+            </div>
+          ))}
+          <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid #f3f4f6' }}>
+            <div style={{ fontSize: 12, color: '#6b7280' }}>Gem. aanmelding vooraf</div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: '#111827', marginTop: 2 }}>{avgLeadTime} <span style={{ fontSize: 13, fontWeight: 400, color: '#9ca3af' }}>dagen</span></div>
+          </div>
+        </div>
+      </div>
+
+      {/* Row 3: Weekdagen + Tijdsloten */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+        {/* Weekdagen */}
+        <div style={cardStyle}>
+          <h3 style={sectionTitle}>📆 Populairste weekdagen</h3>
+          {DAY_NL.map((day, i) => (
+            <div key={day} style={{ marginBottom: 7 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 3 }}>
+                <span style={{ color: '#374151', fontWeight: weekdayCounts[i] === Math.max(...weekdayCounts) && weekdayCounts[i] > 0 ? 700 : 400 }}>{day}</span>
+                <span style={{ color: '#6b7280' }}>{weekdayCounts[i]} tours</span>
+              </div>
+              <div style={{ height: 10, background: '#f3f4f6', borderRadius: 5 }}>
+                <div style={{
+                  width: `${(weekdayCounts[i] / maxWeekday) * 100}%`, height: '100%',
+                  background: i === 0 || i === 6 ? '#f59e0b' : '#6366f1',
+                  borderRadius: 5, transition: 'width .4s', opacity: 0.75,
+                }} />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Tijdsloten */}
+        <div style={cardStyle}>
+          <h3 style={sectionTitle}>🕐 Populairste tijdsloten</h3>
+          {timeSlots.length === 0 ? (
+            <p style={{ color: '#9ca3af', fontSize: 13 }}>Geen data beschikbaar</p>
+          ) : timeSlots.map(([slot, count]) => (
+            <div key={slot} style={{ marginBottom: 7 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 3 }}>
+                <span style={{ color: '#374151', fontWeight: 500 }}>{slot}</span>
+                <span style={{ color: '#6b7280' }}>{count} tours</span>
+              </div>
+              <div style={{ height: 10, background: '#f3f4f6', borderRadius: 5 }}>
+                <div style={{
+                  width: `${(count / maxTimeSlot) * 100}%`, height: '100%',
+                  background: '#0ea5e9', borderRadius: 5, transition: 'width .4s', opacity: 0.75,
+                }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Row 4: Groepsgrootte + Pinguïns */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+        {/* Groepsgrootte distributie */}
+        <div style={cardStyle}>
+          <h3 style={sectionTitle}>👥 Groepsgrootte</h3>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end', height: 110, marginBottom: 8 }}>
+            {sizeData.map((s) => {
+              const pct = (s.count / maxSizeBucket) * 100
+              return (
+                <div key={s.label} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }} title={`${s.label} personen: ${s.count} tours`}>
+                  <div style={{ fontSize: 10, color: '#6b7280', fontWeight: 600 }}>{s.count > 0 ? s.count : ''}</div>
+                  <div style={{ width: '100%', height: `${Math.max(pct, s.count > 0 ? 5 : 0)}%`, background: '#16a34a', borderRadius: '3px 3px 0 0', opacity: 0.7, transition: 'height .3s', minHeight: s.count > 0 ? 3 : 0 }} />
+                  <div style={{ fontSize: 10, color: '#9ca3af', whiteSpace: 'nowrap' }}>{s.label}</div>
+                </div>
+              )
+            })}
+          </div>
+          {/* Volwassenen vs kinderen */}
+          <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid #f3f4f6' }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 8 }}>Samenstelling bezoekers</div>
+            <div style={{ display: 'flex', height: 12, borderRadius: 6, overflow: 'hidden', marginBottom: 6 }}>
+              <div style={{ width: `${totalVisitors > 0 ? (totalAdults / totalVisitors) * 100 : 50}%`, background: '#6366f1', opacity: 0.8, transition: 'width .4s' }} />
+              <div style={{ flex: 1, background: '#f59e0b', opacity: 0.7 }} />
+            </div>
+            <div style={{ display: 'flex', gap: 16, fontSize: 12 }}>
+              <span style={{ color: '#6366f1', fontWeight: 600 }}>■ Volwassenen: {totalAdults} ({totalVisitors > 0 ? Math.round((totalAdults / totalVisitors) * 100) : 0}%)</span>
+              <span style={{ color: '#f59e0b', fontWeight: 600 }}>■ Kinderen: {totalChildren} ({totalVisitors > 0 ? Math.round((totalChildren / totalVisitors) * 100) : 0}%)</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Pinguïns voeren */}
+        <div style={cardStyle}>
+          <h3 style={sectionTitle}>🐧 Pinguïns voeren</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+            {[
+              { label: 'Tours met pinguïns', value: penguinSessions, sub: `${penguinPct}% van alle tours`, color: '#f59e0b' },
+              { label: 'Totaal deelnemers', value: totalPenguin, sub: penguinSessions > 0 ? `gem. ${(totalPenguin / penguinSessions).toFixed(1)} per tour` : '—', color: '#f59e0b' },
+            ].map(({ label, value, sub, color }) => (
+              <div key={label} style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '12px 14px' }}>
+                <div style={{ fontSize: 24, fontWeight: 800, color }}>{value}</div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginTop: 4 }}>{label}</div>
+                <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>{sub}</div>
+              </div>
+            ))}
+          </div>
+          {/* Pinguïns per maand */}
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 8 }}>% tours met pinguïns voeren per maand</div>
+          <div style={{ display: 'flex', gap: 3, alignItems: 'flex-end', height: 70 }}>
+            {penguinMonthData.map((m, i) => (
+              <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }} title={`${m.label}: ${m.pct}% (${m.count} tours)`}>
+                <div style={{ fontSize: 8, color: '#9ca3af' }}>{m.pct > 0 ? `${m.pct}%` : ''}</div>
+                <div style={{ width: '100%', height: `${Math.max(m.pct, m.pct > 0 ? 5 : 0)}%`, background: '#f59e0b', borderRadius: '2px 2px 0 0', opacity: 0.75, minHeight: m.pct > 0 ? 3 : 0 }} />
+                <div style={{ fontSize: 8, color: '#9ca3af' }}>{m.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Row 5: Kwartalen */}
+      {quarters.length > 1 && (
+        <div style={{ ...cardStyle, marginBottom: 16 }}>
+          <h3 style={sectionTitle}>🗓 Seizoenspatroon per kwartaal</h3>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end', height: 90 }}>
+            {quarters.map(([label, count]) => {
+              const pct = (count / maxQuarter) * 100
+              const q = label.includes('Q1') ? '#0ea5e9' : label.includes('Q2') ? '#16a34a' : label.includes('Q3') ? '#f59e0b' : '#8b5cf6'
+              return (
+                <div key={label} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }} title={`${label}: ${count} tours`}>
+                  <div style={{ fontSize: 10, color: '#6b7280', fontWeight: 600 }}>{count}</div>
+                  <div style={{ width: '100%', height: `${Math.max(pct, 4)}%`, background: q, borderRadius: '3px 3px 0 0', opacity: 0.75, transition: 'height .3s' }} />
+                  <div style={{ fontSize: 9, color: '#9ca3af', textAlign: 'center', whiteSpace: 'nowrap' }}>{label}</div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

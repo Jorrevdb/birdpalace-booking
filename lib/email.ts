@@ -321,11 +321,10 @@ export async function sendBookingUpdatedEmail(booking: Booking): Promise<void> {
     const contact = getContactEmail(s.contact_email)
 
     const statusLabel =
-      booking.status === 'approved'
-        ? 'Geaccepteerd'
-        : booking.status === 'denied'
-          ? 'Geweigerd'
-          : 'Afwachtend'
+      booking.status === 'approved'  ? 'Geaccepteerd'
+      : booking.status === 'denied'  ? 'Geweigerd'
+      : booking.status === 'afgerond' ? 'Afgerond'
+      : 'Afwachtend'
 
     const brand = getBrandColor(s)
     const brandLight = lighten(brand)
@@ -354,6 +353,64 @@ export async function sendBookingUpdatedEmail(booking: Booking): Promise<void> {
     })
   } catch (err) {
     console.error('[email] sendBookingUpdatedEmail failed', err)
+  }
+}
+
+// ── Visitor: booking finalized (tour completed) ───────────────────────────────
+export async function sendBookingFinalizedEmail(
+  booking: Booking,
+  customSubject?: string,
+  customBody?: string
+): Promise<{ ok: boolean; error?: unknown }> {
+  try {
+    if (!booking.visitor_email) return { ok: false, error: 'No visitor email' }
+    const from = await getFrom()
+    const s = await getSettings()
+    const siteUrl = getSiteUrl((s as any).site_url)
+    const contact = getContactEmail(s.contact_email)
+    const brand = getBrandColor(s)
+    const vars = buildTemplateVars(booking, s, { siteUrl })
+
+    const subject = customSubject && customSubject.trim()
+      ? fillTemplate(customSubject.trim(), vars)
+      : s.email_finalized_subject
+        ? fillTemplate(s.email_finalized_subject, vars)
+        : `Bedankt voor jullie bezoek! – ${formatDate(booking.tour_date)}`
+
+    const bodyText = customBody && customBody.trim()
+      ? fillTemplate(customBody.trim(), vars)
+      : s.email_finalized_intro
+        ? fillTemplate(s.email_finalized_intro, vars)
+        : `Bedankt voor jullie bezoek aan Bird Palace op ${formatDate(booking.tour_date)}. We hopen dat jullie het fantastisch hebben gehad!`
+
+    const bodyHtml = bodyText.replace(/\n/g, '<br>')
+
+    const result = await resend.emails.send({
+      from,
+      to: booking.visitor_email,
+      subject,
+      html: `
+        <div style="font-family:sans-serif;max-width:560px;margin:0 auto;color:#1a1a1a">
+          <h2 style="color:${brand}">Bedankt voor jullie bezoek! 🎉</h2>
+          <p>${bodyHtml}</p>
+          <table style="width:100%;border-collapse:collapse;margin:24px 0">
+            <tr><td style="padding:8px 0;color:#666;width:160px">Datum</td><td style="padding:8px 0;font-weight:600">${formatDate(booking.tour_date)}</td></tr>
+            <tr><td style="padding:8px 0;color:#666">Tijdslot</td><td style="padding:8px 0;font-weight:600">${booking.tour_time}</td></tr>
+            ${peopleRows(booking)}
+          </table>
+          <p style="margin-top:32px;color:#888;font-size:13px">Vragen? Mail ons op <a href="mailto:${contact}">${contact}</a></p>
+        </div>
+      `,
+    })
+    if (result.error) {
+      console.error('[email] sendBookingFinalizedEmail – Resend error:', result.error)
+      return { ok: false, error: result.error }
+    }
+    console.log('[email] sendBookingFinalizedEmail sent, id:', result.data?.id)
+    return { ok: true }
+  } catch (err) {
+    console.error('[email] sendBookingFinalizedEmail threw:', err)
+    return { ok: false, error: err }
   }
 }
 

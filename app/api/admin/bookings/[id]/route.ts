@@ -23,7 +23,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       .eq('id', params.id)
       .single()
 
-    const allowedStatus = ['pending', 'approved', 'denied']
+    const allowedStatus = ['pending', 'approved', 'denied', 'afgerond']
     const patch: any = {}
 
     if (updates && typeof updates === 'object') {

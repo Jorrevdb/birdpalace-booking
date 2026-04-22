@@ -280,11 +280,25 @@ function DashboardPanel({ password, onNavigate }: { password: string; onNavigate
   const [approving, setApproving] = useState(false)
   const [defaultApproveMsg, setDefaultApproveMsg] = useState('')
 
-  // Load default approve message from settings once
+  // Finalize modal (2-step)
+  const [finalizeBooking, setFinalizeBooking] = useState<any | null>(null)
+  const [finalizeStep, setFinalizeStep] = useState<1 | 2>(1)
+  const [finalizeNotify, setFinalizeNotify] = useState(true)
+  const [finalizeSubject, setFinalizeSubject] = useState('')
+  const [finalizeBody, setFinalizeBody] = useState('')
+  const [finalizing, setFinalizing] = useState(false)
+  const [defaultFinalizedSubject, setDefaultFinalizedSubject] = useState('')
+  const [defaultFinalizedBody, setDefaultFinalizedBody] = useState('')
+
+  // Load default approve message + finalized email defaults from settings once
   useEffect(() => {
     fetch('/api/settings')
       .then(r => r.json())
-      .then(d => { if (d.settings?.worker_message_accepted_default) setDefaultApproveMsg(d.settings.worker_message_accepted_default) })
+      .then(d => {
+        if (d.settings?.worker_message_accepted_default) setDefaultApproveMsg(d.settings.worker_message_accepted_default)
+        if (d.settings?.email_finalized_subject) setDefaultFinalizedSubject(d.settings.email_finalized_subject)
+        if (d.settings?.email_finalized_intro)   setDefaultFinalizedBody(d.settings.email_finalized_intro)
+      })
       .catch(() => {})
   }, [])
 
@@ -312,6 +326,42 @@ function DashboardPanel({ password, onNavigate }: { password: string; onNavigate
   }
 
   useEffect(() => { fetchBookings() }, [])
+
+  function openFinalizeModal(b: any) {
+    setFinalizeBooking(b)
+    setFinalizeStep(1)
+    setFinalizeNotify(!!b.visitor_email)
+    setFinalizeSubject(defaultFinalizedSubject || `Bedankt voor jullie bezoek! – ${b.tour_date}`)
+    setFinalizeBody(defaultFinalizedBody || `Bedankt voor jullie bezoek aan Bird Palace op ${b.tour_date}. We hopen dat jullie het fantastisch hebben gehad!`)
+    setFinalizing(false)
+  }
+
+  async function doFinalizeBooking() {
+    if (!finalizeBooking) return
+    setFinalizing(true)
+    try {
+      const res = await fetch(`/api/admin/bookings/${finalizeBooking.id}/finalize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          password,
+          notify: finalizeNotify && !!finalizeBooking.visitor_email,
+          email_subject: finalizeSubject,
+          email_body: finalizeBody,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.ok) throw new Error(data.message || 'Mislukt')
+      setFinalizeBooking(null)
+      setActionMsg(`✓ Boeking afgerond${finalizeNotify && finalizeBooking.visitor_email ? ' — opvolgmail verstuurd' : ''}`)
+      fetchBookings()
+      setTimeout(() => setActionMsg(''), 5000)
+    } catch (err: any) {
+      setActionMsg(err.message || 'Fout bij afronden')
+    } finally {
+      setFinalizing(false)
+    }
+  }
 
   async function approveBooking(id: string, workerMessage: string) {
     setApproving(true)
@@ -342,6 +392,14 @@ function DashboardPanel({ password, onNavigate }: { password: string; onNavigate
   // Derived stats
   const pendingUpcoming = bookings.filter(b => b.status === 'pending' && b.tour_date >= todayStr)
   const upcomingApproved = bookings.filter(b => b.status === 'approved' && b.tour_date >= todayStr)
+  // Past approved bookings that still need to be finalized (tour date+time is in the past)
+  const pastApprovedToFinalize = bookings.filter(b => {
+    if (b.status !== 'approved') return false
+    try {
+      const dt = new Date(`${b.tour_date}T${b.tour_time ?? '00:00'}`)
+      return dt < new Date()
+    } catch { return b.tour_date < todayStr }
+  })
   const thisMonthStr = todayStr.slice(0, 7)
   const thisMonthTotal = bookings.filter(b => b.tour_date.startsWith(thisMonthStr)).length
   const next14 = bookings.filter(b => b.tour_date >= todayStr && b.tour_date <= in14Str)
@@ -388,11 +446,11 @@ function DashboardPanel({ password, onNavigate }: { password: string; onNavigate
       {/* Two-column layout */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
 
-        {/* Left: Actie vereist */}
+        {/* Left: Afwachtende boekingen */}
         <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 14, overflow: 'hidden' }}>
           <div style={{ padding: '16px 20px', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div>
-              <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#111827' }}>⏳ Actie vereist</h2>
+              <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#111827' }}>⏳ Afwachtende boekingen</h2>
               <p style={{ margin: '2px 0 0', fontSize: 12, color: '#9ca3af' }}>Boekingen die wachten op bevestiging</p>
             </div>
             {pendingUpcoming.length > 0 && (
@@ -447,43 +505,52 @@ function DashboardPanel({ password, onNavigate }: { password: string; onNavigate
           )}
         </div>
 
-        {/* Right: Aankomende tours */}
-        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 14, overflow: 'hidden' }}>
-          <div style={{ padding: '16px 20px', borderBottom: '1px solid #f3f4f6' }}>
-            <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#111827' }}>📅 Aankomende tours</h2>
-            <p style={{ margin: '2px 0 0', fontSize: 12, color: '#9ca3af' }}>Bevestigde tours, komende 14 dagen</p>
+        {/* Right: Boeking afronden */}
+        <div style={{ background: '#fff', border: `1px solid ${pastApprovedToFinalize.length > 0 ? '#c7d2fe' : '#e5e7eb'}`, borderRadius: 14, overflow: 'hidden' }}>
+          <div style={{ padding: '16px 20px', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#111827' }}>✅ Boeking afronden</h2>
+              <p style={{ margin: '2px 0 0', fontSize: 12, color: '#9ca3af' }}>Goedgekeurde tours die al zijn geweest</p>
+            </div>
+            {pastApprovedToFinalize.length > 0 && (
+              <span style={{ background: '#6366f1', color: '#fff', borderRadius: 999, padding: '2px 10px', fontSize: 12, fontWeight: 700 }}>
+                {pastApprovedToFinalize.length}
+              </span>
+            )}
           </div>
           <div style={{ maxHeight: 420, overflowY: 'auto' }}>
-            {next14.filter((b: any) => b.status === 'approved').length === 0 ? (
+            {pastApprovedToFinalize.length === 0 ? (
               <div style={{ padding: '32px 20px', textAlign: 'center', color: '#9ca3af', fontSize: 14 }}>
-                Geen tours gepland in de komende 14 dagen
+                ✓ Niets te afronden
               </div>
             ) : (
-              next14.filter((b: any) => b.status === 'approved').map((b: any) => (
-                <div key={b.id} style={{ padding: '14px 20px', borderBottom: '1px solid #f9fafb', display: 'flex', alignItems: 'center', gap: 14 }}>
-                  <div style={{ textAlign: 'center', minWidth: 44, background: '#f9fafb', borderRadius: 10, padding: '6px 8px', border: '1px solid #e5e7eb' }}>
-                    <div style={{ fontSize: 11, color: '#9ca3af', textTransform: 'uppercase', fontWeight: 600 }}>
-                      {new Intl.DateTimeFormat('nl-BE', { month: 'short' }).format(new Date(`${b.tour_date}T00:00:00`))}
+              pastApprovedToFinalize.map((b: any) => (
+                <div key={b.id} style={{ padding: '14px 20px', borderBottom: '1px solid #f9fafb' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 14, color: '#111827' }}>{b.visitor_name}</div>
+                      <div style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>
+                        {fmtDate(b.tour_date)} · {b.tour_time} · {b.total_people} pers.
+                      </div>
                     </div>
-                    <div style={{ fontSize: 20, fontWeight: 800, color: '#111827', lineHeight: 1.1 }}>
-                      {new Date(`${b.tour_date}T00:00:00`).getDate()}
-                    </div>
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 600, fontSize: 14, color: '#111827' }}>{b.visitor_name}</div>
-                    <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 1 }}>
-                      {b.tour_time} · {b.total_people} {b.total_people === 1 ? 'persoon' : 'personen'}
-                    </div>
+                    <button
+                      onClick={() => openFinalizeModal(b)}
+                      style={{ padding: '5px 12px', borderRadius: 8, border: 'none', background: '#6366f1', color: '#fff', fontWeight: 600, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, marginLeft: 12 }}
+                    >
+                      Afronden →
+                    </button>
                   </div>
                 </div>
               ))
             )}
           </div>
-          <div style={{ padding: '12px 20px', borderTop: '1px solid #f3f4f6' }}>
-            <button onClick={() => onNavigate('bookings')} style={{ fontSize: 13, color: 'var(--primary-color-600)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, padding: 0 }}>
-              Alle boekingen bekijken →
-            </button>
-          </div>
+          {pastApprovedToFinalize.length > 0 && (
+            <div style={{ padding: '12px 20px', borderTop: '1px solid #f3f4f6' }}>
+              <button onClick={() => onNavigate('bookings')} style={{ fontSize: 13, color: 'var(--primary-color-600)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, padding: 0 }}>
+                Bekijk alle boekingen →
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -520,6 +587,188 @@ function DashboardPanel({ password, onNavigate }: { password: string; onNavigate
         </div>
       )}
     </div>
+
+    {/* ── Finalize modal (2-step) ──────────────────────────────────────────── */}
+    {finalizeBooking !== null && (
+      <div
+        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+        onClick={(e) => { if (e.target === e.currentTarget && !finalizing) setFinalizeBooking(null) }}
+      >
+        <div style={{ background: '#fff', borderRadius: 18, width: '100%', maxWidth: 520, boxShadow: '0 20px 60px rgba(0,0,0,0.2)', overflow: 'hidden' }}>
+          {/* Header */}
+          <div style={{ padding: '20px 24px', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: '#111827' }}>
+                Boeking afronden — Stap {finalizeStep}: {finalizeStep === 1 ? 'Gegevens controleren' : 'Opvolgmail'}
+              </h2>
+              <p style={{ margin: '3px 0 0', fontSize: 13, color: '#9ca3af' }}>
+                {finalizeStep === 1 ? 'Klopt alles? Dan gaan we door naar de opvolgmail.' : 'Stuur optioneel een bedankmail naar de bezoeker.'}
+              </p>
+            </div>
+            <button
+              onClick={() => { if (!finalizing) setFinalizeBooking(null) }}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: '#9ca3af', lineHeight: 1, padding: 4 }}
+            >×</button>
+          </div>
+
+          {/* Step 1: Booking details */}
+          {finalizeStep === 1 && (
+            <>
+              <div style={{ padding: '20px 24px' }}>
+                <div style={{ background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 12, padding: '16px 18px' }}>
+                  <div style={{ fontWeight: 700, fontSize: 16, color: '#111827', marginBottom: 8 }}>{finalizeBooking.visitor_name}</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 0', fontSize: 14 }}>
+                    <span style={{ color: '#6b7280' }}>📅 Datum</span>
+                    <span style={{ fontWeight: 600 }}>{fmtDate(finalizeBooking.tour_date)}</span>
+                    <span style={{ color: '#6b7280' }}>🕐 Tijdslot</span>
+                    <span style={{ fontWeight: 600 }}>{finalizeBooking.tour_time}</span>
+                    <span style={{ color: '#6b7280' }}>👥 Personen</span>
+                    <span style={{ fontWeight: 600 }}>{finalizeBooking.total_people}</span>
+                    {finalizeBooking.visitor_email && (
+                      <>
+                        <span style={{ color: '#6b7280' }}>📧 E-mail</span>
+                        <span style={{ fontWeight: 600, fontSize: 13 }}>{finalizeBooking.visitor_email}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <p style={{ margin: '16px 0 0', fontSize: 13, color: '#6b7280' }}>
+                  De boeking krijgt de status <strong style={{ color: '#4338ca' }}>Afgerond</strong> en wordt uit de Google Agenda verwijderd.
+                </p>
+              </div>
+              {/* Footer step 1 */}
+              <div style={{ padding: '14px 24px', borderTop: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ position: 'relative' }}>
+                  <select
+                    onChange={(e) => {
+                      const v = e.target.value
+                      if (v === 'delete') {
+                        if (confirm('Boeking verwijderen?')) {
+                          fetch(`/api/admin/bookings/${finalizeBooking.id}`, {
+                            method: 'DELETE',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ password }),
+                          }).then(() => { setFinalizeBooking(null); fetchBookings(); setActionMsg('Boeking verwijderd.') }).catch(() => {})
+                        }
+                      } else if (v === 'denied') {
+                        fetch(`/api/admin/bookings/${finalizeBooking.id}`, {
+                          method: 'PATCH',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ password, updates: { status: 'denied' }, notify: false }),
+                        }).then(() => { setFinalizeBooking(null); fetchBookings(); setActionMsg('Boeking geweigerd.') }).catch(() => {})
+                      } else if (v === 'cancel') {
+                        setFinalizeBooking(null)
+                      }
+                      e.target.value = ''
+                    }}
+                    defaultValue=""
+                    style={{ padding: '8px 12px', borderRadius: 10, border: '1px solid #fecaca', background: '#fee2e2', color: '#dc2626', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
+                  >
+                    <option value="" disabled>🚫 Kwam niet opdagen</option>
+                    <option value="denied">→ Markeer als geweigerd</option>
+                    <option value="delete">→ Verwijder boeking</option>
+                    <option value="cancel">→ Annuleren</option>
+                  </select>
+                </div>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button
+                    onClick={() => setFinalizeBooking(null)}
+                    style={{ padding: '9px 16px', borderRadius: 10, border: '1px solid #d1d5db', background: '#f9fafb', color: '#374151', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}
+                  >
+                    Terug
+                  </button>
+                  <button
+                    onClick={() => setFinalizeStep(2)}
+                    style={{ padding: '9px 24px', borderRadius: 10, border: 'none', background: '#6366f1', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}
+                  >
+                    Volgende →
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Step 2: Email config */}
+          {finalizeStep === 2 && (
+            <>
+              <div style={{ padding: '20px 24px' }}>
+                {/* Visitor info */}
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 18, padding: '10px 14px', background: '#f8fafc', borderRadius: 10, border: '1px solid #e5e7eb' }}>
+                  <div style={{ fontSize: 22 }}>👤</div>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>{finalizeBooking.visitor_name}</div>
+                    <div style={{ fontSize: 13, color: finalizeBooking.visitor_email ? '#374151' : '#9ca3af' }}>
+                      {finalizeBooking.visitor_email || 'Geen e-mailadres bekend'}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Notify toggle */}
+                <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: finalizeBooking.visitor_email ? 'pointer' : 'not-allowed', opacity: finalizeBooking.visitor_email ? 1 : 0.5, marginBottom: 16 }}>
+                  <input
+                    type="checkbox"
+                    checked={finalizeNotify}
+                    onChange={(e) => setFinalizeNotify(e.target.checked)}
+                    disabled={!finalizeBooking.visitor_email || finalizing}
+                    style={{ width: 15, height: 15 }}
+                  />
+                  <span style={{ fontSize: 14, fontWeight: 600, color: '#374151' }}>Bedankmail sturen naar bezoeker</span>
+                </label>
+
+                {finalizeNotify && finalizeBooking.visitor_email && (
+                  <>
+                    <label style={{ display: 'block', marginBottom: 12 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 5 }}>Onderwerp</span>
+                      <input
+                        value={finalizeSubject}
+                        onChange={(e) => setFinalizeSubject(e.target.value)}
+                        disabled={finalizing}
+                        style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #d1d5db', fontSize: 14, boxSizing: 'border-box' }}
+                      />
+                    </label>
+                    <label style={{ display: 'block' }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 5 }}>
+                        Inhoud <span style={{ fontWeight: 400, color: '#9ca3af' }}>(vrije tekst, placeholders zoals {'{{visitor_name}}'} werken)</span>
+                      </span>
+                      <textarea
+                        value={finalizeBody}
+                        onChange={(e) => setFinalizeBody(e.target.value)}
+                        rows={4}
+                        disabled={finalizing}
+                        style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #d1d5db', fontSize: 14, resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit' }}
+                      />
+                    </label>
+                  </>
+                )}
+              </div>
+
+              {/* Footer step 2 */}
+              <div style={{ padding: '14px 24px', borderTop: '1px solid #f3f4f6', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                <button
+                  onClick={() => setFinalizeStep(1)}
+                  disabled={finalizing}
+                  style={{ padding: '9px 16px', borderRadius: 10, border: '1px solid #d1d5db', background: '#f9fafb', color: '#374151', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}
+                >
+                  ← Terug
+                </button>
+                <button
+                  onClick={doFinalizeBooking}
+                  disabled={finalizing}
+                  style={{ padding: '9px 24px', borderRadius: 10, border: 'none', background: '#6366f1', color: '#fff', fontWeight: 700, fontSize: 14, cursor: finalizing ? 'not-allowed' : 'pointer', opacity: finalizing ? 0.7 : 1, display: 'flex', alignItems: 'center', gap: 8 }}
+                >
+                  {finalizing ? (
+                    <>
+                      <span style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.7s linear infinite' }} />
+                      Bezig…
+                    </>
+                  ) : '✓ Voltooien'}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    )}
 
     {/* ── Approve confirmation modal ───────────────────────────────────────── */}
     {approvingBooking !== null && (
@@ -804,7 +1053,7 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
   const [notifyVisitor, setNotifyVisitor] = useState(true)
 
   // Filters
-  const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'approved' | 'denied'>('all')
+  const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'approved' | 'denied' | 'afgerond'>('all')
   const [filterTime, setFilterTime] = useState<'upcoming' | 'past' | 'all'>('upcoming')
   const [searchQuery, setSearchQuery] = useState('')
 
@@ -864,7 +1113,15 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
   function statusStyle(status: string) {
     if (status === 'approved') return { border: '1px solid var(--primary-color-600)', color: 'var(--primary-color-700)', background: 'color-mix(in srgb, var(--primary-color-600) 10%, white)' }
     if (status === 'denied') return { border: '1px solid #dc2626', color: '#991b1b', background: '#fef2f2' }
+    if (status === 'afgerond') return { border: '1px solid #6366f1', color: '#4338ca', background: '#eef2ff' }
     return { border: '1px solid #d1d5db', color: '#374151', background: '#fff' }
+  }
+
+  function statusLabel(status: string) {
+    if (status === 'approved') return 'Geaccepteerd'
+    if (status === 'denied') return 'Geweigerd'
+    if (status === 'afgerond') return 'Afgerond'
+    return 'Afwachtend'
   }
 
   async function fetchBookings() {
@@ -1324,6 +1581,7 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
             { key: 'pending' as const, label: `Afwachtend${pendingUpcomingCount > 0 ? ` (${pendingUpcomingCount})` : ''}` },
             { key: 'approved' as const, label: 'Geaccepteerd' },
             { key: 'denied' as const, label: 'Geweigerd' },
+            { key: 'afgerond' as const, label: 'Afgerond' },
           ]).map(({ key, label }) => (
             <button
               key={key}
@@ -1331,9 +1589,10 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
               style={{
                 ...filterBtnBase,
                 ...(filterStatus === key
-                  ? key === 'approved' ? { background: 'var(--primary-color-600)', color: '#fff', borderColor: 'var(--primary-color-600)' }
-                  : key === 'denied'   ? { background: '#dc2626', color: '#fff', borderColor: '#dc2626' }
-                  : key === 'pending'  ? { background: '#f59e0b', color: '#fff', borderColor: '#f59e0b' }
+                  ? key === 'approved'  ? { background: 'var(--primary-color-600)', color: '#fff', borderColor: 'var(--primary-color-600)' }
+                  : key === 'denied'    ? { background: '#dc2626', color: '#fff', borderColor: '#dc2626' }
+                  : key === 'pending'   ? { background: '#f59e0b', color: '#fff', borderColor: '#f59e0b' }
+                  : key === 'afgerond'  ? { background: '#6366f1', color: '#fff', borderColor: '#6366f1' }
                   : filterBtnActive
                   : filterBtnInactive)
               }}
@@ -1440,7 +1699,7 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
                     </td>
                     <td style={{ padding: '13px 12px', borderBottom: '1px solid #f3f4f6' }}>
                       <span style={{ ...statusStyle(b.status), display: 'inline-block', borderRadius: 999, padding: '4px 12px', fontWeight: 600, fontSize: 12 }}>
-                        {b.status === 'pending' ? 'Afwachtend' : b.status === 'approved' ? 'Geaccepteerd' : 'Geweigerd'}
+                        {statusLabel(b.status)}
                       </span>
                     </td>
                     <td style={{ padding: '13px 12px', borderBottom: '1px solid #f3f4f6', textAlign: 'right', whiteSpace: 'nowrap' }}>
@@ -1512,6 +1771,7 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
                       <option value="pending">Afwachtend</option>
                       <option value="approved">Geaccepteerd</option>
                       <option value="denied">Geweigerd</option>
+                      <option value="afgerond">Afgerond</option>
                     </select>
                   </div>
 
@@ -2206,7 +2466,9 @@ function SettingsPanel({ password }: { password: string }) {
   const [emailSlotTakenEnabled, setEmailSlotTakenEnabled] = useState(true)
   const [emailSlotTakenSubject, setEmailSlotTakenSubject] = useState('')
   const [emailSlotTakenIntro, setEmailSlotTakenIntro] = useState('')
-  const [activeEmailTab, setActiveEmailTab] = useState<'received' | 'approved' | 'denied' | 'worker' | 'slot_taken'>('received')
+  const [emailFinalizedSubject, setEmailFinalizedSubject] = useState('')
+  const [emailFinalizedIntro, setEmailFinalizedIntro] = useState('')
+  const [activeEmailTab, setActiveEmailTab] = useState<'received' | 'approved' | 'denied' | 'worker' | 'slot_taken' | 'finalized'>('received')
 
   // Refs for placeholder insertion
   const refReceivedSubject = useRef<HTMLInputElement>(null)
@@ -2220,6 +2482,8 @@ function SettingsPanel({ password }: { password: string }) {
   const refWorkerMsgDefault = useRef<HTMLTextAreaElement>(null)
   const refSlotTakenSubject = useRef<HTMLInputElement>(null)
   const refSlotTakenIntro = useRef<HTMLTextAreaElement>(null)
+  const refFinalizedSubject = useRef<HTMLInputElement>(null)
+  const refFinalizedIntro = useRef<HTMLTextAreaElement>(null)
   const refCopyStep1 = useRef<HTMLInputElement>(null)
   const refCopyStep2 = useRef<HTMLInputElement>(null)
   const refCopyStep3 = useRef<HTMLInputElement>(null)
@@ -2282,6 +2546,8 @@ function SettingsPanel({ password }: { password: string }) {
     setEmailSlotTakenEnabled(s.email_slot_taken_enabled !== false)
     setEmailSlotTakenSubject(s.email_slot_taken_subject ?? '')
     setEmailSlotTakenIntro(s.email_slot_taken_intro ?? '')
+    setEmailFinalizedSubject(s.email_finalized_subject ?? '')
+    setEmailFinalizedIntro(s.email_finalized_intro ?? '')
     // Pagina's
     setCopyStep1(s.copy_step1_subtitle ?? 'Kies een datum en tijdslot')
     setCopyStep2(s.copy_step2_subtitle ?? 'Vertel ons meer over jullie groep')
@@ -2328,6 +2594,8 @@ function SettingsPanel({ password }: { password: string }) {
         email_slot_taken_enabled: emailSlotTakenEnabled,
         email_slot_taken_subject: emailSlotTakenSubject,
         email_slot_taken_intro: emailSlotTakenIntro,
+        email_finalized_subject: emailFinalizedSubject,
+        email_finalized_intro: emailFinalizedIntro,
         // Export
         export_columns: exportColumns,
         // Pagina's
@@ -2370,10 +2638,11 @@ function SettingsPanel({ password }: { password: string }) {
   ]
 
   const EMAIL_TABS: { id: typeof activeEmailTab; label: string; desc: string }[] = [
-    { id: 'received', label: 'Aanvraag ontvangen', desc: 'Bezoeker ontvangt dit na het insturen van een boekingsaanvraag.' },
-    { id: 'approved', label: 'Tour bevestigd', desc: 'Bezoeker ontvangt dit wanneer de boeking wordt goedgekeurd.' },
-    { id: 'denied', label: 'Tour geweigerd', desc: 'Bezoeker ontvangt dit wanneer de boeking wordt afgewezen.' },
-    { id: 'worker', label: 'Worker notificatie', desc: 'Medewerker ontvangt dit bij een nieuwe aanvraag.' },
+    { id: 'received',  label: 'Aanvraag ontvangen',  desc: 'Bezoeker ontvangt dit na het insturen van een boekingsaanvraag.' },
+    { id: 'approved',  label: 'Tour bevestigd',       desc: 'Bezoeker ontvangt dit wanneer de boeking wordt goedgekeurd.' },
+    { id: 'denied',    label: 'Tour geweigerd',       desc: 'Bezoeker ontvangt dit wanneer de boeking wordt afgewezen.' },
+    { id: 'finalized', label: 'Boeking afgerond',     desc: 'Bezoeker ontvangt dit na het afronden van de tour — bedankmail.' },
+    { id: 'worker',    label: 'Worker notificatie',   desc: 'Medewerker ontvangt dit bij een nieuwe aanvraag.' },
     { id: 'slot_taken', label: 'Boeking al ingenomen', desc: 'Medewerker ontvangt dit wanneer een collega de boeking al heeft overgenomen.' },
   ]
 
@@ -2441,7 +2710,7 @@ function SettingsPanel({ password }: { password: string }) {
 
             {activeEmailTab === 'received' && (
               <div>
-                <p style={{ margin: '0 0 16px', fontSize: 13, color: '#9ca3af' }}>{EMAIL_TABS[0].desc}</p>
+                <p style={{ margin: '0 0 16px', fontSize: 13, color: '#9ca3af' }}>{EMAIL_TABS.find(t => t.id === 'received')!.desc}</p>
                 <SettingsField label="Onderwerpregel">
                   <input ref={refReceivedSubject} value={emailReceivedSubject} onChange={e => setEmailReceivedSubject(e.target.value)} style={SF_INPUT} />
                   <PlaceholderChips placeholders={BOOKING_PLACEHOLDERS} targetRef={refReceivedSubject} />
@@ -2455,7 +2724,7 @@ function SettingsPanel({ password }: { password: string }) {
 
             {activeEmailTab === 'approved' && (
               <div>
-                <p style={{ margin: '0 0 16px', fontSize: 13, color: '#9ca3af' }}>{EMAIL_TABS[1].desc}</p>
+                <p style={{ margin: '0 0 16px', fontSize: 13, color: '#9ca3af' }}>{EMAIL_TABS.find(t => t.id === 'approved')!.desc}</p>
                 <SettingsField label="Onderwerpregel">
                   <input ref={refApprovedSubject} value={emailApprovedSubject} onChange={e => setEmailApprovedSubject(e.target.value)} style={SF_INPUT} />
                   <PlaceholderChips placeholders={BOOKING_PLACEHOLDERS} targetRef={refApprovedSubject} />
@@ -2469,7 +2738,7 @@ function SettingsPanel({ password }: { password: string }) {
 
             {activeEmailTab === 'denied' && (
               <div>
-                <p style={{ margin: '0 0 16px', fontSize: 13, color: '#9ca3af' }}>{EMAIL_TABS[2].desc}</p>
+                <p style={{ margin: '0 0 16px', fontSize: 13, color: '#9ca3af' }}>{EMAIL_TABS.find(t => t.id === 'denied')!.desc}</p>
                 <SettingsField label="Onderwerpregel">
                   <input ref={refDeniedSubject} value={emailDeniedSubject} onChange={e => setEmailDeniedSubject(e.target.value)} style={SF_INPUT} />
                   <PlaceholderChips placeholders={BOOKING_PLACEHOLDERS} targetRef={refDeniedSubject} />
@@ -2483,7 +2752,7 @@ function SettingsPanel({ password }: { password: string }) {
 
             {activeEmailTab === 'worker' && (
               <div>
-                <p style={{ margin: '0 0 16px', fontSize: 13, color: '#9ca3af' }}>{EMAIL_TABS[3].desc}</p>
+                <p style={{ margin: '0 0 16px', fontSize: 13, color: '#9ca3af' }}>{EMAIL_TABS.find(t => t.id === 'worker')!.desc}</p>
                 <SettingsField label="Onderwerpregel">
                   <input ref={refWorkerSubject} value={emailWorkerSubject} onChange={e => setEmailWorkerSubject(e.target.value)} style={SF_INPUT} />
                   <PlaceholderChips placeholders={WORKER_PLACEHOLDERS} targetRef={refWorkerSubject} />
@@ -2499,9 +2768,23 @@ function SettingsPanel({ password }: { password: string }) {
               </div>
             )}
 
+            {activeEmailTab === 'finalized' && (
+              <div>
+                <p style={{ margin: '0 0 16px', fontSize: 13, color: '#9ca3af' }}>{EMAIL_TABS.find(t => t.id === 'finalized')!.desc}</p>
+                <SettingsField label="Onderwerpregel" hint="Laat leeg voor de standaard. Placeholders zoals {{visitor_name}} werken.">
+                  <input ref={refFinalizedSubject} value={emailFinalizedSubject} onChange={e => setEmailFinalizedSubject(e.target.value)} placeholder={`Bedankt voor jullie bezoek! – {{tour_date}}`} style={SF_INPUT} />
+                  <PlaceholderChips placeholders={BOOKING_PLACEHOLDERS} targetRef={refFinalizedSubject} />
+                </SettingsField>
+                <SettingsField label="Introductietekst">
+                  <textarea ref={refFinalizedIntro} value={emailFinalizedIntro} onChange={e => setEmailFinalizedIntro(e.target.value)} placeholder={`Bedankt voor jullie bezoek aan Bird Palace op {{tour_date}}. We hopen dat jullie het fantastisch hebben gehad!`} style={SF_TEXTAREA} rows={4} />
+                  <PlaceholderChips placeholders={BOOKING_PLACEHOLDERS} targetRef={refFinalizedIntro} />
+                </SettingsField>
+              </div>
+            )}
+
             {activeEmailTab === 'slot_taken' && (
               <div>
-                <p style={{ margin: '0 0 16px', fontSize: 13, color: '#9ca3af' }}>{EMAIL_TABS[4].desc}</p>
+                <p style={{ margin: '0 0 16px', fontSize: 13, color: '#9ca3af' }}>{EMAIL_TABS.find(t => t.id === 'slot_taken')!.desc}</p>
 
                 {/* Enable/disable toggle */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: emailSlotTakenEnabled ? '#f0fdf4' : '#fef2f2', border: `1px solid ${emailSlotTakenEnabled ? '#bbf7d0' : '#fecaca'}`, borderRadius: 10, marginBottom: 20 }}>

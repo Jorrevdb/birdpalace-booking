@@ -34,6 +34,9 @@ export type Settings = {
   email_slot_taken_enabled?: boolean
   email_slot_taken_subject?: string
   email_slot_taken_intro?: string
+  // Visitor: booking finalized (tour completed)
+  email_finalized_subject?: string
+  email_finalized_intro?: string
 
   // ── Pagina copy ───────────────────────────────────────────────────────────
   copy_step1_subtitle?: string   // "Kies een datum en tijdslot"

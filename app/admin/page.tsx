@@ -296,8 +296,8 @@ function DashboardPanel({ password, onNavigate }: { password: string; onNavigate
   const [finFormName, setFinFormName] = useState('')
   const [finFormEmail, setFinFormEmail] = useState('')
   const [finFormPhone, setFinFormPhone] = useState('')
-  const [finFormAdults, setFinFormAdults] = useState(0)
-  const [finFormChildren, setFinFormChildren] = useState(0)
+  const [finFormAdults, setFinFormAdults] = useState<number | ''>('')
+  const [finFormChildren, setFinFormChildren] = useState<number | ''>('')
   const [finFormPenguinFeeding, setFinFormPenguinFeeding] = useState<number | ''>('')
   const [finFormWorkerMessage, setFinFormWorkerMessage] = useState('')
   const [finFormVisitorMessage, setFinFormVisitorMessage] = useState('')
@@ -363,8 +363,9 @@ function DashboardPanel({ password, onNavigate }: { password: string; onNavigate
     setFinFormName(b.visitor_name   || '')
     setFinFormEmail(b.visitor_email || '')
     setFinFormPhone(b.visitor_phone || '')
-    setFinFormAdults(Math.max(0, total - children))
-    setFinFormChildren(children)
+    const adults = total - children
+    setFinFormAdults(total === 0 ? '' : adults)
+    setFinFormChildren(children === 0 && total === 0 ? '' : children)
     setFinFormPenguinFeeding(b.penguin_feeding_count != null ? Number(b.penguin_feeding_count) : '')
     setFinFormWorkerMessage(b.worker_message  || '')
     setFinFormVisitorMessage(b.visitor_message || '')
@@ -394,8 +395,8 @@ function DashboardPanel({ password, onNavigate }: { password: string; onNavigate
     if (!finalizeBooking) return
     setSavingFinStep1(true)
     try {
-      const adults   = Number(finFormAdults   || 0)
-      const children = Number(finFormChildren || 0)
+      const adults   = finFormAdults   === '' ? 0 : Number(finFormAdults)
+      const children = finFormChildren === '' ? 0 : Number(finFormChildren)
       const res = await fetch(`/api/admin/bookings/${finalizeBooking.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -684,7 +685,7 @@ function DashboardPanel({ password, onNavigate }: { password: string; onNavigate
         style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
         onClick={(e) => { if (e.target === e.currentTarget && !finalizing) setFinalizeBooking(null) }}
       >
-        <div style={{ background: '#fff', borderRadius: 18, width: '100%', maxWidth: 520, boxShadow: '0 20px 60px rgba(0,0,0,0.2)', overflow: 'hidden' }}>
+        <div style={{ background: '#fff', borderRadius: 18, width: '100%', maxWidth: 780, maxHeight: '92vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.2)', overflow: 'hidden' }}>
           {/* Header */}
           <div style={{ padding: '20px 24px', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div>
@@ -742,18 +743,18 @@ function DashboardPanel({ password, onNavigate }: { password: string; onNavigate
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 4 }}>
                       <label style={{ display: 'block' }}>
                         <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Volwassenen</span>
-                        <input type="number" min={0} value={finFormAdults} onChange={e => setFinFormAdults(Math.max(0, Number(e.target.value || 0)))} style={{ display: 'block', marginTop: 4, width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 14, boxSizing: 'border-box' }} />
+                        <input type="number" min={0} placeholder="—" value={finFormAdults} onChange={e => setFinFormAdults(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))} style={{ display: 'block', marginTop: 4, width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 14, boxSizing: 'border-box' }} />
                       </label>
                       <label style={{ display: 'block' }}>
                         <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Kinderen</span>
-                        <input type="number" min={0} value={finFormChildren} onChange={e => setFinFormChildren(Math.max(0, Number(e.target.value || 0)))} style={{ display: 'block', marginTop: 4, width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 14, boxSizing: 'border-box' }} />
+                        <input type="number" min={0} placeholder="—" value={finFormChildren} onChange={e => setFinFormChildren(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))} style={{ display: 'block', marginTop: 4, width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 14, boxSizing: 'border-box' }} />
                       </label>
                     </div>
                     <p style={{ margin: '4px 0 10px', fontSize: 13, color: '#6b7280' }}>
-                      Totaal: <strong style={{ color: '#111827' }}>{finFormAdults + finFormChildren} personen</strong>
+                      Totaal: <strong style={{ color: '#111827' }}>{(Number(finFormAdults) || 0) + (Number(finFormChildren) || 0)} personen</strong>
                     </p>
                     <label style={{ display: 'block', marginBottom: 10 }}>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: '#6b7280' }}>Pinguïns voeren</span>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: '#6b7280' }}>Pinguïns voeren <span style={{ fontWeight: 400, fontSize: 11, color: '#d1d5db' }}>— intern</span></span>
                       <input
                         type="number"
                         min={0}
@@ -1206,7 +1207,7 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
   const [exportOpen, setExportOpen] = useState(false)
   const [exportFrom, setExportFrom] = useState('')
   const [exportTo, setExportTo] = useState('')
-  const [exportStatusFilter, setExportStatusFilter] = useState<'all' | 'approved' | 'pending' | 'denied'>('all')
+  const [exportStatusFilter, setExportStatusFilter] = useState<'all' | 'approved' | 'pending' | 'denied' | 'afgerond'>('all')
   const [exportColumns, setExportColumns] = useState<ExportColumn[]>(DEFAULT_EXPORT_COLUMNS)
 
   // Create booking
@@ -1214,8 +1215,8 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
   const [createSaving, setCreateSaving] = useState(false)
   const [createDate, setCreateDate] = useState('')
   const [createTime, setCreateTime] = useState('')
-  const [createAdults, setCreateAdults] = useState(1)
-  const [createChildren, setCreateChildren] = useState(0)
+  const [createAdults, setCreateAdults] = useState<number | ''>('')
+  const [createChildren, setCreateChildren] = useState<number | ''>('')
   const [createName, setCreateName] = useState('')
   const [createEmail, setCreateEmail] = useState('')
   const [createPhone, setCreatePhone] = useState('')
@@ -1231,8 +1232,8 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
   const [formName, setFormName] = useState('')
   const [formEmail, setFormEmail] = useState('')
   const [formPhone, setFormPhone] = useState('')
-  const [formAdults, setFormAdults] = useState(1)
-  const [formChildren, setFormChildren] = useState(0)
+  const [formAdults, setFormAdults] = useState<number | ''>('')
+  const [formChildren, setFormChildren] = useState<number | ''>('')
   const [formPenguinFeeding, setFormPenguinFeeding] = useState<number | ''>('')
   const [formWorkerMessage, setFormWorkerMessage] = useState('')
   const [formVisitorMessage, setFormVisitorMessage] = useState('')
@@ -1318,11 +1319,12 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
     setFormName(booking.visitor_name || '')
     setFormEmail(booking.visitor_email || '')
     setFormPhone(booking.visitor_phone || '')
-    // formAdults = adults only (total minus children)
-    const children = Number(booking.children_count || 0)
-    const total = Number(booking.total_people || 1)
-    setFormAdults(Math.max(1, total - children))
-    setFormChildren(children)
+    // formAdults = adults only (total minus children); '' when unknown
+    const children = Number(booking.children_count ?? '')
+    const total    = Number(booking.total_people   ?? '')
+    const adults   = total - children
+    setFormAdults(isNaN(adults) || total === 0 ? '' : adults)
+    setFormChildren(children || '')
     setFormPenguinFeeding(booking.penguin_feeding_count != null ? Number(booking.penguin_feeding_count) : '')
     setFormWorkerMessage(booking.worker_message || '')
     setFormVisitorMessage(booking.visitor_message || '')
@@ -1354,7 +1356,7 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
     if (!activeBooking) return
     setSavingModal(true)
     try {
-      const adults = Number(formAdults || 1)
+      const adults   = Number(formAdults   || 0)
       const children = Number(formChildren || 0)
       const payload = {
         password,
@@ -1452,8 +1454,9 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
       return String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
     }
     function statusNL(s: string) {
-      if (s === 'approved') return 'Geaccepteerd'
-      if (s === 'denied') return 'Geweigerd'
+      if (s === 'approved')  return 'Geaccepteerd'
+      if (s === 'denied')    return 'Geweigerd'
+      if (s === 'afgerond')  return 'Afgerond'
       return 'Afwachtend'
     }
     function cellValue(b: any, key: string): string {
@@ -1565,8 +1568,8 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
     // Pre-fill date with today
     setCreateDate(new Date().toISOString().slice(0, 10))
     setCreateTime('')
-    setCreateAdults(0)
-    setCreateChildren(0)
+    setCreateAdults('')
+    setCreateChildren('')
     setCreatePenguinFeeding('')
     setCreateName('')
     setCreateEmail('')
@@ -1593,8 +1596,8 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
           password,
           tour_date: createDate,
           tour_time: createTime,
-          adults: createAdults,
-          children_count: createChildren,
+          adults:        createAdults  === '' ? 0 : Number(createAdults),
+          children_count: createChildren === '' ? 0 : Number(createChildren),
           penguin_feeding_count: createPenguinFeeding === '' ? null : Number(createPenguinFeeding),
           visitor_name: createName,
           visitor_email: createEmail,
@@ -1934,19 +1937,19 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
                     <label style={{ display: 'block' }}>
                       <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Volwassenen (+12j)</span>
-                      <input type="number" min={1} value={formAdults} onChange={(e) => setFormAdults(Number(e.target.value || 1))} style={{ display: 'block', marginTop: 5, width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #d1d5db', fontSize: 14, boxSizing: 'border-box' }} />
+                      <input type="number" min={0} placeholder="—" value={formAdults} onChange={(e) => setFormAdults(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))} style={{ display: 'block', marginTop: 5, width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #d1d5db', fontSize: 14, boxSizing: 'border-box' }} />
                     </label>
                     <label style={{ display: 'block' }}>
                       <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Kinderen (-12j)</span>
-                      <input type="number" min={0} value={formChildren} onChange={(e) => setFormChildren(Number(e.target.value || 0))} style={{ display: 'block', marginTop: 5, width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #d1d5db', fontSize: 14, boxSizing: 'border-box' }} />
+                      <input type="number" min={0} placeholder="—" value={formChildren} onChange={(e) => setFormChildren(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))} style={{ display: 'block', marginTop: 5, width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #d1d5db', fontSize: 14, boxSizing: 'border-box' }} />
                     </label>
                   </div>
                   <p style={{ margin: '6px 0 0', fontSize: 13, color: '#6b7280' }}>
-                    Totaal: <strong style={{ color: '#111827' }}>{formAdults + formChildren} personen</strong>
+                    Totaal: <strong style={{ color: '#111827' }}>{(Number(formAdults) || 0) + (Number(formChildren) || 0)} personen</strong>
                   </p>
 
                   <label style={{ display: 'block', marginTop: 14 }}>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: '#6b7280' }}>Pinguïns voeren</span>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: '#6b7280' }}>Pinguïns voeren <span style={{ fontWeight: 400, fontSize: 11, color: '#d1d5db' }}>— intern</span></span>
                     <input
                       type="number"
                       min={0}
@@ -2067,10 +2070,11 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
               <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 600, color: '#374151' }}>Status</p>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 20 }}>
                 {([
-                  { key: 'all' as const, label: 'Alle' },
-                  { key: 'approved' as const, label: 'Geaccepteerd' },
-                  { key: 'pending' as const, label: 'Afwachtend' },
-                  { key: 'denied' as const, label: 'Geweigerd' },
+                  { key: 'all' as const,      label: 'Alle' },
+                  { key: 'approved' as const,  label: 'Geaccepteerd' },
+                  { key: 'pending' as const,   label: 'Afwachtend' },
+                  { key: 'denied' as const,    label: 'Geweigerd' },
+                  { key: 'afgerond' as const,  label: 'Afgerond' },
                 ]).map(({ key, label }) => (
                   <button key={key} onClick={() => setExportStatusFilter(key)}
                     style={{
@@ -2167,9 +2171,9 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
                   <input
                     type="number"
                     min={0}
-                    placeholder="— onbekend"
-                    value={createAdults === 0 && createAdults !== undefined ? createAdults : createAdults}
-                    onChange={(e) => setCreateAdults(Math.max(0, Number(e.target.value || 0)))}
+                    placeholder="—"
+                    value={createAdults}
+                    onChange={(e) => setCreateAdults(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
                     disabled={createSaving}
                     style={{ display: 'block', marginTop: 5, width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #d1d5db', fontSize: 14, boxSizing: 'border-box' }}
                   />
@@ -2179,19 +2183,20 @@ function BookingsTable({ password, deepBookingId }: { password: string; deepBook
                   <input
                     type="number"
                     min={0}
+                    placeholder="—"
                     value={createChildren}
-                    onChange={(e) => setCreateChildren(Math.max(0, Number(e.target.value || 0)))}
+                    onChange={(e) => setCreateChildren(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
                     disabled={createSaving}
                     style={{ display: 'block', marginTop: 5, width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #d1d5db', fontSize: 14, boxSizing: 'border-box' }}
                   />
                 </label>
               </div>
               <p style={{ margin: '0 0 12px', fontSize: 13, color: '#6b7280' }}>
-                Totaal: <strong style={{ color: '#111827' }}>{(createAdults || 0) + createChildren} personen</strong>
+                Totaal: <strong style={{ color: '#111827' }}>{(Number(createAdults) || 0) + (Number(createChildren) || 0)} personen</strong>
               </p>
 
               <label style={{ display: 'block', marginBottom: 20 }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: '#6b7280' }}>Pinguïns voeren</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#6b7280' }}>Pinguïns voeren <span style={{ fontWeight: 400, fontSize: 11, color: '#d1d5db' }}>— intern</span></span>
                 <input
                   type="number"
                   min={0}

@@ -298,6 +298,7 @@ function DashboardPanel({ password, onNavigate }: { password: string; onNavigate
   const [finFormPhone, setFinFormPhone] = useState('')
   const [finFormAdults, setFinFormAdults] = useState(0)
   const [finFormChildren, setFinFormChildren] = useState(0)
+  const [finFormPenguinFeeding, setFinFormPenguinFeeding] = useState<number | ''>('')
   const [finFormWorkerMessage, setFinFormWorkerMessage] = useState('')
   const [finFormVisitorMessage, setFinFormVisitorMessage] = useState('')
 
@@ -364,6 +365,7 @@ function DashboardPanel({ password, onNavigate }: { password: string; onNavigate
     setFinFormPhone(b.visitor_phone || '')
     setFinFormAdults(Math.max(0, total - children))
     setFinFormChildren(children)
+    setFinFormPenguinFeeding(b.penguin_feeding_count != null ? Number(b.penguin_feeding_count) : '')
     setFinFormWorkerMessage(b.worker_message  || '')
     setFinFormVisitorMessage(b.visitor_message || '')
 
@@ -405,10 +407,11 @@ function DashboardPanel({ password, onNavigate }: { password: string; onNavigate
             visitor_name:    finFormName,
             visitor_email:   finFormEmail,
             visitor_phone:   finFormPhone,
-            total_people:    adults + children,
-            children_count:  children,
-            worker_message:  finFormWorkerMessage  || null,
-            visitor_message: finFormVisitorMessage || null,
+            total_people:          adults + children,
+            children_count:        children,
+            penguin_feeding_count: finFormPenguinFeeding === '' ? null : Number(finFormPenguinFeeding),
+            worker_message:        finFormWorkerMessage  || null,
+            visitor_message:       finFormVisitorMessage || null,
           },
           notify: false,
         }),
@@ -746,9 +749,20 @@ function DashboardPanel({ password, onNavigate }: { password: string; onNavigate
                         <input type="number" min={0} value={finFormChildren} onChange={e => setFinFormChildren(Math.max(0, Number(e.target.value || 0)))} style={{ display: 'block', marginTop: 4, width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 14, boxSizing: 'border-box' }} />
                       </label>
                     </div>
-                    <p style={{ margin: '4px 0 12px', fontSize: 13, color: '#6b7280' }}>
+                    <p style={{ margin: '4px 0 10px', fontSize: 13, color: '#6b7280' }}>
                       Totaal: <strong style={{ color: '#111827' }}>{finFormAdults + finFormChildren} personen</strong>
                     </p>
+                    <label style={{ display: 'block', marginBottom: 10 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: '#6b7280' }}>Pinguïns voeren</span>
+                      <input
+                        type="number"
+                        min={0}
+                        placeholder="—"
+                        value={finFormPenguinFeeding}
+                        onChange={e => setFinFormPenguinFeeding(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                        style={{ display: 'block', marginTop: 4, width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 14, boxSizing: 'border-box', color: '#374151' }}
+                      />
+                    </label>
                     <label style={{ display: 'block' }}>
                       <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Bericht aan bezoeker</span>
                       <textarea value={finFormWorkerMessage} onChange={e => setFinFormWorkerMessage(e.target.value)} rows={2} style={{ display: 'block', marginTop: 4, width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 14, resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit' }} />
